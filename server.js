@@ -1,17 +1,21 @@
 const express = require("express");
 const path = require("path");
+const QRCode = require("qrcode");
 
 const app = express();
 
 const PORT = 3000;
 const SERVER_URL = "http://localhost:3000";
 
+const sessions = {};
 
+app.use(express.json());
+
+//** dashboard
+ 
 // Serve everything inside /public
 app.use(express.static(path.join(__dirname, "public")));
 
-
-const sessions = {};
 
 //**create session
 
@@ -44,6 +48,31 @@ app.get("/session/:id", (req, res) => {
 
 });
 
+//**serve QR code for a session
+app.get("/session/:id/qr", async (req, res) => {
+
+    const session = sessions[req.params.id];
+
+    if (!session) {
+        return res.status(404).send("Session not found.");
+    }
+
+    try {
+
+        const png = await QRCode.toBuffer(session.sessionURL);
+
+        res.setHeader("Content-Type", "image/png");
+        res.send(png);
+
+    } catch (err) {
+
+        console.error(err);
+        res.status(500).send("Could not generate QR code.");
+
+    }
+});
+
+
 //**get session info
 
 app.get("/api/session/:id", (req, res) => {
@@ -59,6 +88,13 @@ app.get("/api/session/:id", (req, res) => {
     res.json(session);
 
 });
+
+//**get list of sessions
+
+app.get("/api/sessions", (req, res) => {
+    res.json(Object.values(sessions));
+});
+
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
