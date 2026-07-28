@@ -4,6 +4,8 @@ const path = require("path");
 const app = express();
 
 const PORT = 3000;
+const SERVER_URL = "http://localhost:3000";
+
 
 // Serve everything inside /public
 app.use(express.static(path.join(__dirname, "public")));
@@ -15,28 +17,14 @@ const sessions = {};
 
 app.post("/create-session", (req, res) => {
 
-    const id = generateSessionID();
+    const session = createSession();
 
-    sessions[id] = {
+    console.log("Created session:", session.sessionId);
 
-        created: new Date(),
-
-        uploads: []
-
-    };
-
-    //for debugging
-    console.log(sessions);
-
-    console.log("Created session:", id);
-
-    res.json({
-
-        sessionId: id
-
-    });
+    res.json(session);
 
 });
+
 
 //**serve session page
 
@@ -56,12 +44,28 @@ app.get("/session/:id", (req, res) => {
 
 });
 
+//**get session info
+
+app.get("/api/session/:id", (req, res) => {
+
+    const session = sessions[req.params.id];
+
+    if (!session) {
+        return res.status(404).json({
+            error: "Session not found"
+        });
+    }
+
+    res.json(session);
+
+});
+
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });
 
 
-//generate session ID
+//***generate session ID
 
 function generateSessionID(length = 6) {
 
@@ -74,4 +78,27 @@ function generateSessionID(length = 6) {
     }
 
     return id;
+}
+
+//***generate session
+
+function createSession() {
+
+    const id = generateSessionID();
+
+    const session = {
+
+        sessionId: id,
+
+        sessionURL: `${SERVER_URL}/session/${id}`,
+
+        created: new Date(),
+
+        uploads: []
+
+    };
+
+    sessions[id] = session;
+
+    return session;
 }
