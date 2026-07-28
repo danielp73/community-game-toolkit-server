@@ -1,8 +1,38 @@
-const parts = window.location.pathname.split("/");
+const sessionId = window.location.pathname
+    .replace(/\/$/, "")
+    .split("/")
+    .pop();
 
-const sessionID = parts[2];
+document.getElementById("session-id").textContent = sessionId;
 
-document.getElementById("session").textContent =
-    "Session: " + sessionID;
+const form = document.getElementById("upload-form");
 
-console.log(sessionID);
+form.addEventListener("submit", async (event) => {
+
+    event.preventDefault();
+
+    const file = document.getElementById("image").files[0];
+
+    if (!file) {
+        alert("Please choose an image.");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    const response = await fetch(`/api/session/${sessionId}/upload`, {
+        method: "POST",
+        body: formData
+    });
+
+    if (response.ok) {
+        document.getElementById("status").textContent =
+            "Upload successful.";
+    }
+    else {
+        document.getElementById("status").textContent =
+            "Upload failed.";
+    }
+
+});

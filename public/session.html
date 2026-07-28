@@ -1,21 +1,40 @@
 <!DOCTYPE html>
-
-<html>
+<html lang="en">
 
 <head>
-
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Toolkit Session</title>
 
+    <link rel="stylesheet" href="/style.css">
 </head>
 
 <body>
 
-<h1>Toolkit Session</h1>
+    <h1>Community Game Development Toolkit</h1>
 
-<p id="session"></p>
+    <p>
+        Session:
+        <span id="session-id"></span>
+    </p>
 
-<script src="/session.js"></script>
+    <form id="upload-form">
+
+        <input
+            type="file"
+            id="image"
+            name="image"
+            accept="image/*">
+
+        <button type="submit">
+            Upload
+        </button>
+
+    </form>
+
+    <p id="status"></p>
+
+    <script src="/session.js"></script>
 
 </body>
 

@@ -1,6 +1,8 @@
 const express = require("express");
 const path = require("path");
 const QRCode = require("qrcode");
+const multer = require("multer");
+const fs = require("fs");
 
 const app = express();
 
@@ -11,10 +13,17 @@ const sessions = {};
 
 app.use(express.json());
 
+//set up multer
+const upload = multer({
+    dest: "uploads/"
+});
+
+
 //** dashboard
  
-// Serve everything inside /public
+// Serve everything inside /public and /uploads
 app.use(express.static(path.join(__dirname, "public")));
+app.use("/uploads", express.static("uploads"));
 
 
 //**create session
@@ -29,6 +38,13 @@ app.post("/create-session", (req, res) => {
 
 });
 
+
+
+//**get list of sessions
+
+app.get("/api/sessions", (req, res) => {
+    res.json(Object.values(sessions));
+});
 
 //**serve session page
 
@@ -49,6 +65,7 @@ app.get("/session/:id", (req, res) => {
 });
 
 //**serve QR code for a session
+
 app.get("/session/:id/qr", async (req, res) => {
 
     const session = sessions[req.params.id];
@@ -89,12 +106,71 @@ app.get("/api/session/:id", (req, res) => {
 
 });
 
-//**get list of sessions
 
-app.get("/api/sessions", (req, res) => {
-    res.json(Object.values(sessions));
+//** upload action
+
+app.post(
+    "/api/session/:id/upload",
+    upload.single("image"),
+    (req, res) => {
+
+        const sessionId = req.params.id;
+
+        if (!sessions[sessionId]) {
+            return res.status(404).send("Session not found.");
+        }
+
+        if (!req.file) {
+            return res.status(400).send("No file uploaded.");
+        }
+
+        // Create the session folder if needed.
+        const sessionFolder = path.join("uploads", sessionId);
+
+        fs.mkdirSync(sessionFolder, { recursive: true });
+
+        // Generate the next filename.
+        const extension = path.extname(req.file.originalname);
+
+        const files = fs.readdirSync(sessionFolder);
+
+        const filename =
+            String(files.length + 1).padStart(6, "0") +
+            extension;
+
+        // Move the uploaded file.
+        const destination = path.join(sessionFolder, filename);
+
+        fs.renameSync(req.file.path, destination);
+
+        console.log(`Saved ${destination}`);
+
+        res.json({
+            success: true,
+            filename: filename
+        });
+
+    }
+);
+
+//send list of files for a session
+app.get("/api/session/:id/uploads", (req, res) => {
+
+    const sessionId = req.params.id;
+
+    const folder = path.join("uploads", sessionId);
+
+    if (!fs.existsSync(folder)) {
+        return res.json([]);
+    }
+
+    const files = fs.readdirSync(folder);
+
+    res.json({
+        media: files
+    });
+
 });
-
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

@@ -11,10 +11,11 @@ async function loadSessions() {
     container.innerHTML = "";
 
     for (const session of sessions) {
+    	console.log(session.sessionId);
 
         container.innerHTML += `
             <p>
-                <strong>${session.sessionId}</strong>
+                <a href="/session/${session.sessionId}/"><strong>${session.sessionId}</strong></a>
                 (${session.uploads.length} uploads)
             </p>
         `;
