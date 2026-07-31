@@ -19,6 +19,11 @@ const uploadButton = document.getElementById("upload-button");
 // the finished image to 1000px before AI processing and permanent storage.
 const MAX_PREVIEW_DIMENSION = 2000;
 
+// A separate, smaller working copy is sent to the AI server. This preserves the
+// larger preview for cropping, while greatly reducing upload time and server
+// memory use when the user removes a background.
+const MAX_BACKGROUND_REMOVAL_DIMENSION = 1000;
+
 // originalFile never changes, so Reset edits can always return to it. currentFile
 // is the version that will be cropped, background-removed, or finally uploaded.
 let originalFile = null;
@@ -84,11 +89,16 @@ cropButton.addEventListener("click", async () => {
 // AI model and sends the transparent PNG back; it does not save it yet.
 removeBackgroundButton.addEventListener("click", async () => {
 
-    setBusy(true, "Removing background… This can take a moment.");
+    setBusy(true, "Preparing image for background removal…");
 
     try {
+        // Keep currentFile unchanged so the 2000px crop remains available in
+        // the editor. Only this temporary 1000px copy is sent to the server.
+        const removalFile = await resizeForBackgroundRemoval(currentFile);
+
+        setStatus("Removing background… This can take a moment.");
         const formData = new FormData();
-        formData.append("image", currentFile, currentFile.name);
+        formData.append("image", removalFile, removalFile.name);
 
         const response = await fetch(`/api/session/${sessionId}/remove-background`, {
             method: "POST",
@@ -207,9 +217,25 @@ async function cropToSquare(file) {
 
 async function resizeForEditor(file) {
 
+    return resizeImage(file, MAX_PREVIEW_DIMENSION, "editor-image.png");
+}
+
+async function resizeForBackgroundRemoval(file) {
+
+    return resizeImage(
+        file,
+        MAX_BACKGROUND_REMOVAL_DIMENSION,
+        "background-removal-image.png"
+    );
+}
+
+// Create a PNG from an image file that fits inside the requested square, without
+// enlarging smaller images or changing their aspect ratio.
+async function resizeImage(file, maxDimension, outputFilename) {
+
     const bitmap = await createImageBitmap(file);
     const largestSide = Math.max(bitmap.width, bitmap.height);
-    const scale = Math.min(1, MAX_PREVIEW_DIMENSION / largestSide);
+    const scale = Math.min(1, maxDimension / largestSide);
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
     const canvas = document.createElement("canvas");
@@ -227,7 +253,7 @@ async function resizeForEditor(file) {
         throw new Error("The browser could not resize this image.");
     }
 
-    return new File([blob], "editor-image.png", { type: "image/png" });
+    return new File([blob], outputFilename, { type: "image/png" });
 }
 
 function setBusy(isBusy, message = "") {

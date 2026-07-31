@@ -21,6 +21,10 @@ const CREATE_TEST_SESSION_ON_STARTUP = true;
 // enters the editor. Images retain their original shape and are never enlarged.
 const MAX_IMAGE_DIMENSION = 1000;
 
+// The medium model gave better quality without a meaningful speed penalty in
+// testing. Change this to "small" only if a later server benchmark improves.
+const BACKGROUND_REMOVAL_MODEL = "medium";
+
 // iPhones usually upload HEIC files with one of these MIME types. The filename
 // extension check below is a fallback for browsers that omit or mislabel it.
 const HEIC_MIME_TYPES = new Set([
@@ -273,7 +277,9 @@ app.post(
             // The package runs its segmentation model on this Node server. It
             // returns a PNG Blob with transparent pixels where the background
             // was removed.
-            const output = await removeBackground(input);
+            const output = await removeBackground(input, {
+                model: BACKGROUND_REMOVAL_MODEL
+            });
             const pngBuffer = Buffer.from(await output.arrayBuffer());
 
             console.log(
