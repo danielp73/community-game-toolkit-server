@@ -3,6 +3,7 @@ const path = require("path");
 const QRCode = require("qrcode");
 const multer = require("multer");
 const fs = require("fs");
+const { removeBackground } = require("@imgly/background-removal-node");
 
 const app = express();
 
@@ -13,9 +14,26 @@ const sessions = {};
 
 app.use(express.json());
 
-//set up multer
+// Store final uploads on disk. These are the images that the user has approved
+// in the editor, so they belong in the session's permanent upload folder.
 const upload = multer({
-    dest: "uploads/"
+    dest: "uploads/",
+    limits: {
+        // A friendly upper limit for mobile camera photos. It also prevents a
+        // very large file from exhausting memory during background removal.
+        fileSize: 15 * 1024 * 1024
+    },
+    fileFilter: imageFileFilter
+});
+
+// Keep temporary editor images in memory instead of writing them to disk. The
+// background-removal endpoint sends its PNG result straight back to the browser.
+const editorUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 15 * 1024 * 1024
+    },
+    fileFilter: imageFileFilter
 });
 
 
@@ -153,6 +171,44 @@ app.post(
     }
 );
 
+//** remove an image background for the mobile editor
+
+app.post(
+    "/api/session/:id/remove-background",
+    editorUpload.single("image"),
+    async (req, res) => {
+
+        // Do not process images for a session that does not exist.
+        if (!sessions[req.params.id]) {
+            return res.status(404).json({ error: "Session not found." });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({ error: "Please provide an image." });
+        }
+
+        try {
+            // The package runs its segmentation model on this Node server.
+            // It returns a Blob containing a PNG with transparent pixels where
+            // the background was removed.
+            const output = await removeBackground(req.file.buffer);
+            const pngBuffer = Buffer.from(await output.arrayBuffer());
+
+            res.set({
+                "Content-Type": "image/png",
+                "Cache-Control": "no-store"
+            });
+            res.send(pngBuffer);
+
+        } catch (error) {
+            console.error("Background removal failed:", error);
+            res.status(500).json({
+                error: "We could not remove the background. You can still upload the original image."
+            });
+        }
+    }
+);
+
 //send list of files for a session
 app.get("/api/session/:id/uploads", (req, res) => {
 
@@ -213,4 +269,16 @@ function createSession() {
     sessions[id] = session;
 
     return session;
+}
+
+// Multer calls this before accepting a file. Checking the browser-provided MIME
+// type is not a complete security boundary, but it prevents obvious non-image
+// uploads from reaching the editor and AI model.
+function imageFileFilter(req, file, callback) {
+
+    if (file.mimetype && file.mimetype.startsWith("image/")) {
+        return callback(null, true);
+    }
+
+    callback(new Error("Only image files are allowed."));
 }

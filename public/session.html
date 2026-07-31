@@ -18,21 +18,38 @@
         <span id="session-id"></span>
     </p>
 
-    <form id="upload-form">
+    <!-- The file input opens the phone's camera roll or camera picker. -->
+    <label class="file-picker" for="image">
+        Choose an image
+    </label>
+    <input
+        type="file"
+        id="image"
+        name="image"
+        accept="image/*"
+        capture="environment">
 
-        <input
-            type="file"
-            id="image"
-            name="image"
-            accept="image/*">
+    <!-- Hidden until an image has been selected. All editing happens here before
+         the user makes the final upload. -->
+    <section id="editor" class="editor" hidden>
+        <div class="preview-shell">
+            <!-- The checkerboard makes a removed (transparent) background easy
+                 to see on any phone. -->
+            <img id="preview" alt="Selected image preview">
+        </div>
 
-        <button type="submit">
-            Upload
-        </button>
+        <div class="editor-actions">
+            <button type="button" id="crop-button">Crop to square</button>
+            <button type="button" id="remove-background-button">Remove background</button>
+            <button type="button" id="reset-button" class="secondary">Reset edits</button>
+        </div>
 
-    </form>
+        <!-- This is deliberately separate from Remove background: the user
+             decides exactly when the edited image should be saved to a session. -->
+        <button type="button" id="upload-button" class="upload-button">Upload image</button>
+    </section>
 
-    <p id="status"></p>
+    <p id="status" role="status" aria-live="polite"></p>
 
     <script src="/session.js"></script>
 
