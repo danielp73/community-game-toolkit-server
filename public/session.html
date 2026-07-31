@@ -36,6 +36,14 @@
                  to see on any phone. -->
             <img id="preview" alt="Selected image preview">
 
+            <!-- This canvas replaces the static preview while crop mode is
+                 active. It draws the photo, freeform crop frame, and handles. -->
+            <canvas
+                id="crop-canvas"
+                class="crop-canvas"
+                aria-label="Crop image. Drag the photo, pinch to zoom, or drag a corner handle."
+                hidden></canvas>
+
             <!-- Shown over the image only while the server removes its
                  background, so users know the request is still active. -->
             <div id="removal-loading" class="removal-loading" role="status" hidden>
@@ -45,9 +53,17 @@
         </div>
 
         <div class="editor-actions">
-            <button type="button" id="crop-button">Crop to square</button>
+            <button type="button" id="crop-button">Crop image</button>
             <button type="button" id="remove-background-button">Remove background</button>
             <button type="button" id="reset-button" class="secondary">Reset edits</button>
+        </div>
+
+        <!-- These controls appear only while the interactive crop canvas is
+             open. Applying the crop creates a new local preview; nothing has
+             been uploaded to the server at this point. -->
+        <div id="crop-actions" class="crop-actions" hidden>
+            <button type="button" id="apply-crop-button">Apply crop</button>
+            <button type="button" id="cancel-crop-button" class="secondary">Cancel</button>
         </div>
 
         <!-- This is deliberately separate from Remove background: the user

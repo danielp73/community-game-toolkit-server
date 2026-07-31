@@ -69,6 +69,49 @@ button:disabled {
     object-fit: contain;
 }
 
+/* The preview image and crop canvas take turns occupying the editor. These
+   explicit rules are needed because their display styles override the browser's
+   default [hidden] rule otherwise. */
+#preview[hidden],
+.crop-canvas[hidden] {
+    display: none;
+}
+
+/* The canvas receives Pointer Events directly, which allows one-finger pans,
+   freeform corner resizing, and two-finger pinch gestures without browser zoom. */
+.crop-canvas {
+    display: block;
+    width: 100%;
+    max-height: 60vh;
+    touch-action: none;
+    cursor: grab;
+}
+
+.crop-canvas:active {
+    cursor: grabbing;
+}
+
+.is-cropping .editor-actions,
+.is-cropping .upload-button {
+    display: none;
+}
+
+.crop-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+/* .crop-actions uses display:grid, so it also needs an explicit hidden rule. */
+.crop-actions[hidden] {
+    display: none;
+}
+
+.crop-actions .secondary {
+    grid-column: auto;
+}
+
 /* A semi-transparent overlay keeps the selected image visible while clearly
    communicating that the server is still working on background removal. */
 .removal-loading {
