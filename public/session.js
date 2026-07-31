@@ -14,13 +14,18 @@ const removeBackgroundButton = document.getElementById("remove-background-button
 const resetButton = document.getElementById("reset-button");
 const uploadButton = document.getElementById("upload-button");
 
+// This is intentionally larger than MAX_IMAGE_DIMENSION in server.js. A 2000px
+// preview preserves detail while the user chooses a crop; the server reduces
+// the finished image to 1000px before AI processing and permanent storage.
+const MAX_PREVIEW_DIMENSION = 2000;
+
 // originalFile never changes, so Reset edits can always return to it. currentFile
 // is the version that will be cropped, background-removed, or finally uploaded.
 let originalFile = null;
 let currentFile = null;
 let previewURL = null;
 
-imageInput.addEventListener("change", () => {
+imageInput.addEventListener("change", async () => {
 
     const file = imageInput.files[0];
 
@@ -28,11 +33,33 @@ imageInput.addEventListener("change", () => {
         return;
     }
 
-    originalFile = file;
-    currentFile = file;
-    editor.hidden = false;
-    showPreview(currentFile);
-    setStatus("Image ready to edit.");
+    setBusy(true, "Preparing image…");
+
+    try {
+        // Convert the selected file to a max-2000px PNG before showing it. This
+        // is especially useful for large iPhone photos, including HEIC files
+        // that the phone's browser can decode and draw to the canvas.
+        originalFile = await resizeForEditor(file);
+        currentFile = originalFile;
+
+        // The editor now owns the smaller PNG. Clear the file picker so the
+        // browser can release its reference to the large camera original.
+        imageInput.value = "";
+        editor.hidden = false;
+        showPreview(currentFile);
+        setStatus("Image resized and ready to edit.");
+    } catch (error) {
+        // Leave the original file available if a browser cannot decode it. The
+        // server will still make its own resize attempt after upload.
+        console.error(error);
+        originalFile = file;
+        currentFile = file;
+        editor.hidden = false;
+        showPreview(currentFile);
+        setStatus("Preview is ready. This browser could not resize it locally.");
+    } finally {
+        setBusy(false);
+    }
 });
 
 // A square crop is a simple, useful default for game-toolkit assets. It crops
@@ -148,11 +175,25 @@ async function cropToSquare(file) {
     const sourceY = Math.floor((bitmap.height - side) / 2);
     const canvas = document.createElement("canvas");
 
-    canvas.width = side;
-    canvas.height = side;
+    // resizeForEditor already limits this image, but keeping this cap here
+    // protects the crop operation if this function is reused in the future.
+    const outputSide = Math.min(side, MAX_PREVIEW_DIMENSION);
+
+    canvas.width = outputSide;
+    canvas.height = outputSide;
 
     const context = canvas.getContext("2d");
-    context.drawImage(bitmap, sourceX, sourceY, side, side, 0, 0, side, side);
+    context.drawImage(
+        bitmap,
+        sourceX,
+        sourceY,
+        side,
+        side,
+        0,
+        0,
+        outputSide,
+        outputSide
+    );
     bitmap.close();
 
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
@@ -162,6 +203,31 @@ async function cropToSquare(file) {
     }
 
     return new File([blob], "cropped-image.png", { type: "image/png" });
+}
+
+async function resizeForEditor(file) {
+
+    const bitmap = await createImageBitmap(file);
+    const largestSide = Math.max(bitmap.width, bitmap.height);
+    const scale = Math.min(1, MAX_PREVIEW_DIMENSION / largestSide);
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext("2d");
+    context.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+
+    if (!blob) {
+        throw new Error("The browser could not resize this image.");
+    }
+
+    return new File([blob], "editor-image.png", { type: "image/png" });
 }
 
 function setBusy(isBusy, message = "") {
