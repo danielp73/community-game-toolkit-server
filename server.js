@@ -10,7 +10,7 @@ const { removeBackground } = require("@imgly/background-removal-node");
 const app = express();
 
 const PORT = 8000;
-const SERVER_URL = process.env.SERVER_URL || `http://localhost:${PORT}`;
+const SERVER_URL = process.env.SERVER_URL || `https://share.communitygametoolkit.org`;
 
 // DEVELOPMENT ONLY — set this to false (or remove this block) before deploying
 // to production. It creates a fresh session every time this server starts, so
