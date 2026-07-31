@@ -261,10 +261,15 @@ app.post(
             // Normalize to a compact PNG before calling the AI. This gives the
             // model a known-safe format and ensures it never processes an image
             // larger than MAX_IMAGE_DIMENSION in either direction.
+            const resizeStartedAt = Date.now();
             const resizedImage = await resizeImage(
                 req.file.path,
                 req.file.mimetype,
                 req.file.originalname
+            );
+
+            console.log(
+                `[Background removal] Resize completed in ${Date.now() - resizeStartedAt}ms.`
             );
 
             // The package needs both image bytes and a MIME type to choose the
@@ -277,13 +282,22 @@ app.post(
             // The package runs its segmentation model on this Node server. It
             // returns a PNG Blob with transparent pixels where the background
             // was removed.
+            const removalStartedAt = Date.now();
             const output = await removeBackground(input, {
                 model: BACKGROUND_REMOVAL_MODEL
             });
+
+            console.log(
+                `[Background removal] IMG.LY removal completed in ` +
+                `${Date.now() - removalStartedAt}ms.`
+            );
+
+            const outputConversionStartedAt = Date.now();
             const pngBuffer = Buffer.from(await output.arrayBuffer());
 
             console.log(
-                `[Background removal] Model completed in ${Date.now() - startedAt}ms; ` +
+                `[Background removal] Output conversion completed in ` +
+                `${Date.now() - outputConversionStartedAt}ms; ` +
                 `sending ${pngBuffer.length} byte PNG.`
             );
 

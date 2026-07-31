@@ -7,7 +7,9 @@ document.getElementById("session-id").textContent = sessionId;
 
 const imageInput = document.getElementById("image");
 const editor = document.getElementById("editor");
+const previewShell = document.getElementById("preview-shell");
 const preview = document.getElementById("preview");
+const removalLoading = document.getElementById("removal-loading");
 const status = document.getElementById("status");
 const cropButton = document.getElementById("crop-button");
 const removeBackgroundButton = document.getElementById("remove-background-button");
@@ -90,6 +92,7 @@ cropButton.addEventListener("click", async () => {
 removeBackgroundButton.addEventListener("click", async () => {
 
     setBusy(true, "Preparing image for background removal…");
+    setRemovalLoading(true);
 
     try {
         // Keep currentFile unchanged so the 2000px crop remains available in
@@ -120,6 +123,7 @@ removeBackgroundButton.addEventListener("click", async () => {
         console.error(error);
         setStatus(error.message || "Background removal failed. You can still upload this image.");
     } finally {
+        setRemovalLoading(false);
         setBusy(false);
     }
 });
@@ -265,6 +269,14 @@ function setBusy(isBusy, message = "") {
     if (message) {
         setStatus(message);
     }
+}
+
+function setRemovalLoading(isLoading) {
+
+    // Keep the visual state on the preview and the screen-reader state in sync.
+    removalLoading.hidden = !isLoading;
+    previewShell.classList.toggle("is-removing-background", isLoading);
+    previewShell.setAttribute("aria-busy", String(isLoading));
 }
 
 function setStatus(message) {

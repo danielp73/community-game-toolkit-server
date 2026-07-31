@@ -31,10 +31,17 @@
     <!-- Hidden until an image has been selected. All editing happens here before
          the user makes the final upload. -->
     <section id="editor" class="editor" hidden>
-        <div class="preview-shell">
+        <div id="preview-shell" class="preview-shell">
             <!-- The checkerboard makes a removed (transparent) background easy
                  to see on any phone. -->
             <img id="preview" alt="Selected image preview">
+
+            <!-- Shown over the image only while the server removes its
+                 background, so users know the request is still active. -->
+            <div id="removal-loading" class="removal-loading" role="status" hidden>
+                <span class="loading-spinner" aria-hidden="true"></span>
+                <span>Removing background…</span>
+            </div>
         </div>
 
         <div class="editor-actions">
