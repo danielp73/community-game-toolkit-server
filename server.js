@@ -9,7 +9,7 @@ const { removeBackground } = require("@imgly/background-removal-node");
 
 const app = express();
 
-const PORT = 8000;
+const PORT = Number(process.env.PORT) || 8000;
 const SERVER_URL = process.env.SERVER_URL || `https://share.communitygametoolkit.org`;
 
 // DEVELOPMENT ONLY — set this to false (or remove this block) before deploying
@@ -40,6 +40,11 @@ const HEIC_MIME_TYPES = new Set([
 const TEMP_UPLOAD_DIRECTORY = path.join(__dirname, "tmp");
 fs.mkdirSync(TEMP_UPLOAD_DIRECTORY, { recursive: true });
 
+// Published scene bundles are served automatically by the existing /public
+// static-file middleware at /scenes/<scene-id>/scene.json.
+const PUBLISHED_SCENES_DIRECTORY = path.join(__dirname, "public", "scenes");
+fs.mkdirSync(PUBLISHED_SCENES_DIRECTORY, { recursive: true });
+
 const sessions = {};
 
 app.use(express.json());
@@ -65,6 +70,17 @@ const editorUpload = multer({
         fileSize: 15 * 1024 * 1024
     },
     fileFilter: imageFileFilter
+});
+
+// A scene publish contains one JSON manifest plus the PNG files referenced by
+// that manifest. Multer stages all files in /tmp until validation succeeds.
+const sceneBundleUpload = multer({
+    dest: TEMP_UPLOAD_DIRECTORY,
+    limits: {
+        fileSize: 15 * 1024 * 1024,
+        files: 101
+    },
+    fileFilter: sceneBundleFileFilter
 });
 
 
@@ -339,6 +355,124 @@ app.get("/api/session/:id/uploads", (req, res) => {
 
 });
 
+// Publish or replace one complete Toolkit scene bundle. The multipart request
+// must contain one "scene" JSON file and zero or more "images" PNG files.
+app.put(
+    "/api/scenes/:sceneId",
+    sceneBundleUpload.fields([
+        { name: "scene", maxCount: 1 },
+        { name: "images", maxCount: 100 }
+    ]),
+    (req, res) => {
+        const sceneId = req.params.sceneId;
+        const sceneFile = req.files?.scene?.[0];
+        const imageFiles = req.files?.images || [];
+        const temporaryFiles = [sceneFile, ...imageFiles].filter(Boolean);
+        let stagingDirectory;
+
+        try {
+            if (!isSafeIdentifier(sceneId)) {
+                return res.status(400).json({ error: "Invalid scene ID." });
+            }
+
+            if (!sceneFile) {
+                return res.status(400).json({ error: "The scene.json file is required." });
+            }
+
+            let sceneData;
+
+            try {
+                sceneData = JSON.parse(fs.readFileSync(sceneFile.path, "utf8"));
+            } catch {
+                return res.status(400).json({ error: "The scene file is not valid JSON." });
+            }
+
+            if (sceneData.sceneId !== sceneId) {
+                return res.status(400).json({
+                    error: "The URL scene ID does not match scene.json."
+                });
+            }
+
+            const uploadedImages = new Map();
+
+            for (const imageFile of imageFiles) {
+                if (!isSafePngFileName(imageFile.originalname)) {
+                    return res.status(400).json({
+                        error: `Invalid image filename: ${imageFile.originalname}`
+                    });
+                }
+
+                if (uploadedImages.has(imageFile.originalname)) {
+                    return res.status(400).json({
+                        error: `Duplicate image filename: ${imageFile.originalname}`
+                    });
+                }
+
+                uploadedImages.set(imageFile.originalname, imageFile);
+            }
+
+            const sceneObjects = Array.isArray(sceneData.objects) ? sceneData.objects : [];
+
+            for (const sceneObject of sceneObjects) {
+                if (sceneObject.type !== "image") {
+                    continue;
+                }
+
+                if (typeof sceneObject.assetUrl !== "string" ||
+                    !sceneObject.assetUrl.startsWith("images/")) {
+                    return res.status(400).json({
+                        error: `Image ${sceneObject.objectId || "(unknown)"} has an invalid assetUrl.`
+                    });
+                }
+
+                const imageFileName = sceneObject.assetUrl.slice("images/".length);
+
+                if (!isSafePngFileName(imageFileName) || !uploadedImages.has(imageFileName)) {
+                    return res.status(400).json({
+                        error: `Missing uploaded image: ${sceneObject.assetUrl}`
+                    });
+                }
+            }
+
+            stagingDirectory = fs.mkdtempSync(
+                path.join(TEMP_UPLOAD_DIRECTORY, `scene-${sceneId}-`)
+            );
+            const stagingImagesDirectory = path.join(stagingDirectory, "images");
+            fs.mkdirSync(stagingImagesDirectory, { recursive: true });
+
+            fs.copyFileSync(sceneFile.path, path.join(stagingDirectory, "scene.json"));
+
+            for (const [fileName, imageFile] of uploadedImages) {
+                fs.copyFileSync(imageFile.path, path.join(stagingImagesDirectory, fileName));
+            }
+
+            const destinationDirectory = path.join(PUBLISHED_SCENES_DIRECTORY, sceneId);
+            replaceDirectory(stagingDirectory, destinationDirectory);
+            stagingDirectory = undefined;
+
+            const sceneUrl = `${SERVER_URL}/scenes/${sceneId}/scene.json`;
+            console.log(`Published scene ${sceneId} to ${destinationDirectory}`);
+
+            return res.json({
+                success: true,
+                sceneId,
+                sceneUrl
+            });
+        } catch (error) {
+            console.error("Scene publishing failed:", error);
+            return res.status(500).json({ error: "The scene could not be published." });
+        } finally {
+            for (const temporaryFile of temporaryFiles) {
+                removeTemporaryFile(temporaryFile.path);
+            }
+
+            if (stagingDirectory) {
+                fs.rmSync(stagingDirectory, { recursive: true, force: true });
+            }
+        }
+    }
+);
+
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
 
@@ -400,6 +534,54 @@ function imageFileFilter(req, file, callback) {
     }
 
     callback(new Error("Only image files are allowed."));
+}
+
+// Accept only the two multipart file fields used by scene publishing.
+function sceneBundleFileFilter(req, file, callback) {
+
+    if (file.fieldname === "scene" &&
+        (file.mimetype === "application/json" || file.originalname === "scene.json")) {
+        return callback(null, true);
+    }
+
+    if (file.fieldname === "images" &&
+        file.mimetype === "image/png" &&
+        isSafePngFileName(file.originalname)) {
+        return callback(null, true);
+    }
+
+    callback(new Error("Scene bundles may contain only scene.json and PNG images."));
+}
+
+// IDs are used as directory names, so permit only a small path-safe alphabet.
+function isSafeIdentifier(value) {
+    return typeof value === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(value);
+}
+
+function isSafePngFileName(value) {
+    return typeof value === "string" && /^[A-Za-z0-9_-]+\.png$/.test(value);
+}
+
+// Replace an existing published version without leaving the scene directory
+// missing if moving the newly validated bundle unexpectedly fails.
+function replaceDirectory(sourceDirectory, destinationDirectory) {
+    const backupDirectory = `${destinationDirectory}.previous`;
+    fs.rmSync(backupDirectory, { recursive: true, force: true });
+
+    if (fs.existsSync(destinationDirectory)) {
+        fs.renameSync(destinationDirectory, backupDirectory);
+    }
+
+    try {
+        fs.renameSync(sourceDirectory, destinationDirectory);
+        fs.rmSync(backupDirectory, { recursive: true, force: true });
+    } catch (error) {
+        if (fs.existsSync(backupDirectory) && !fs.existsSync(destinationDirectory)) {
+            fs.renameSync(backupDirectory, destinationDirectory);
+        }
+
+        throw error;
+    }
 }
 
 // Convert HEIC/HEIF to PNG before resizing. This uses a dedicated decoder,
