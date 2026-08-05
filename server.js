@@ -47,7 +47,9 @@ fs.mkdirSync(PUBLISHED_SCENES_DIRECTORY, { recursive: true });
 
 const sessions = {};
 
-app.use(express.json());
+// Scene publishing can include several base64-encoded PNGs in one JSON request.
+// Individual images are still limited and validated by the publishing route.
+app.use(express.json({ limit: "50mb" }));
 
 // Store final uploads on disk. These are the images that the user has approved
 // in the editor, so they belong in the session's permanent upload folder.
@@ -357,7 +359,7 @@ app.get("/api/session/:id/uploads", (req, res) => {
 
 // Publish or replace one complete Toolkit scene bundle. The multipart request
 // must contain one "scene" JSON file and zero or more "images" PNG files.
-app.put(
+app.post(
     "/api/scenes/:sceneId",
     sceneBundleUpload.fields([
         { name: "scene", maxCount: 1 },
@@ -473,6 +475,130 @@ app.put(
     }
 );
 
+// Unity's multipart encoding is rejected by the current hosted proxy even
+// though ordinary curl multipart requests pass. This JSON transport carries
+// the same bundle data without changing its stored or publicly served format.
+app.post("/api/scenes/:sceneId/json", (req, res) => {
+    const sceneId = req.params.sceneId;
+    let stagingDirectory;
+
+    try {
+        if (!isSafeIdentifier(sceneId)) {
+            return res.status(400).json({ error: "Invalid scene ID." });
+        }
+
+        if (typeof req.body?.sceneJson !== "string") {
+            return res.status(400).json({ error: "The sceneJson value is required." });
+        }
+
+        let sceneData;
+
+        try {
+            sceneData = JSON.parse(req.body.sceneJson);
+        } catch {
+            return res.status(400).json({ error: "The sceneJson value is not valid JSON." });
+        }
+
+        if (sceneData.sceneId !== sceneId) {
+            return res.status(400).json({
+                error: "The URL scene ID does not match sceneJson."
+            });
+        }
+
+        const submittedImages = Array.isArray(req.body.images) ? req.body.images : [];
+
+        if (submittedImages.length > 100) {
+            return res.status(400).json({ error: "A scene may contain at most 100 images." });
+        }
+
+        const uploadedImages = new Map();
+
+        for (const submittedImage of submittedImages) {
+            if (!isSafePngFileName(submittedImage?.fileName)) {
+                return res.status(400).json({ error: "An image has an invalid filename." });
+            }
+
+            if (uploadedImages.has(submittedImage.fileName)) {
+                return res.status(400).json({
+                    error: `Duplicate image filename: ${submittedImage.fileName}`
+                });
+            }
+
+            if (typeof submittedImage.base64Data !== "string" ||
+                !isValidBase64(submittedImage.base64Data)) {
+                return res.status(400).json({
+                    error: `Invalid image data: ${submittedImage.fileName}`
+                });
+            }
+
+            const imageBuffer = Buffer.from(submittedImage.base64Data, "base64");
+
+            if (imageBuffer.length > 15 * 1024 * 1024) {
+                return res.status(413).json({
+                    error: `Image is too large: ${submittedImage.fileName}`
+                });
+            }
+
+            uploadedImages.set(submittedImage.fileName, imageBuffer);
+        }
+
+        const sceneObjects = Array.isArray(sceneData.objects) ? sceneData.objects : [];
+
+        for (const sceneObject of sceneObjects) {
+            if (sceneObject.type !== "image") {
+                continue;
+            }
+
+            if (typeof sceneObject.assetUrl !== "string" ||
+                !sceneObject.assetUrl.startsWith("images/")) {
+                return res.status(400).json({
+                    error: `Image ${sceneObject.objectId || "(unknown)"} has an invalid assetUrl.`
+                });
+            }
+
+            const imageFileName = sceneObject.assetUrl.slice("images/".length);
+
+            if (!isSafePngFileName(imageFileName) || !uploadedImages.has(imageFileName)) {
+                return res.status(400).json({
+                    error: `Missing uploaded image: ${sceneObject.assetUrl}`
+                });
+            }
+        }
+
+        stagingDirectory = fs.mkdtempSync(
+            path.join(TEMP_UPLOAD_DIRECTORY, `scene-${sceneId}-`)
+        );
+        const stagingImagesDirectory = path.join(stagingDirectory, "images");
+        fs.mkdirSync(stagingImagesDirectory, { recursive: true });
+
+        fs.writeFileSync(path.join(stagingDirectory, "scene.json"), req.body.sceneJson);
+
+        for (const [fileName, imageBuffer] of uploadedImages) {
+            fs.writeFileSync(path.join(stagingImagesDirectory, fileName), imageBuffer);
+        }
+
+        const destinationDirectory = path.join(PUBLISHED_SCENES_DIRECTORY, sceneId);
+        replaceDirectory(stagingDirectory, destinationDirectory);
+        stagingDirectory = undefined;
+
+        const sceneUrl = `${SERVER_URL}/scenes/${sceneId}/scene.json`;
+        console.log(`Published scene ${sceneId} through JSON transport.`);
+
+        return res.json({
+            success: true,
+            sceneId,
+            sceneUrl
+        });
+    } catch (error) {
+        console.error("JSON scene publishing failed:", error);
+        return res.status(500).json({ error: "The scene could not be published." });
+    } finally {
+        if (stagingDirectory) {
+            fs.rmSync(stagingDirectory, { recursive: true, force: true });
+        }
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
 
@@ -560,6 +686,10 @@ function isSafeIdentifier(value) {
 
 function isSafePngFileName(value) {
     return typeof value === "string" && /^[A-Za-z0-9_-]+\.png$/.test(value);
+}
+
+function isValidBase64(value) {
+    return value.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(value);
 }
 
 // Replace an existing published version without leaving the scene directory
