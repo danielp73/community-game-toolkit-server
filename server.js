@@ -89,6 +89,15 @@ const sceneBundleUpload = multer({
 //** dashboard
  
 // Serve everything inside /public and /uploads
+// Published scenes are replaceable content. Prevent browsers and hosting
+// proxies from keeping an older scene.json or an older image with the same URL.
+app.use("/scenes", (req, res, next) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    next();
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/uploads", express.static("uploads"));
 

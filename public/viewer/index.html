@@ -22,14 +22,40 @@
       outline: none;
     }
 
-    #loading {
+    #overlay {
       position: fixed;
-      left: 50%;
-      top: 50%;
-      width: min(180px, 45vw);
+      inset: 0;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 16px;
+      color: #fff;
+      font: 15px/1.5 system-ui, sans-serif;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    #overlay[hidden], #controls[hidden], #error-details[hidden] {
+      display: none;
+    }
+
+    .overlay-content {
+      width: min(360px, 88vw);
+      padding: 10px 16px 12px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.72);
+      backdrop-filter: blur(8px);
+    }
+
+    #scene-title {
+      margin: 0 0 8px;
+      font-size: 0.95rem;
+    }
+
+    #loading-track {
       height: 2px;
+      margin: 18px 0 10px;
       overflow: hidden;
-      transform: translate(-50%, -50%);
       background: rgba(255, 255, 255, 0.2);
     }
 
@@ -37,6 +63,61 @@
       width: 0;
       height: 100%;
       background: #fff;
+    }
+
+    #status, #image-progress, #error-details {
+      margin: 7px 0 0;
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    #error-actions {
+      display: none;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 20px;
+    }
+
+    #overlay.is-error #loading-track, #overlay.is-error #image-progress {
+      display: none;
+    }
+
+    #overlay.is-error #error-actions {
+      display: flex;
+    }
+
+    #overlay.is-error {
+      align-items: center;
+      background: rgba(0, 0, 0, 0.78);
+      pointer-events: auto;
+    }
+
+    #overlay.is-error .overlay-content {
+      padding: 24px;
+    }
+
+    #error-actions button, #error-actions a {
+      padding: 9px 14px;
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 999px;
+      background: transparent;
+      color: #fff;
+      font: inherit;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    #controls {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      padding: 9px 14px;
+      transform: translateX(-50%);
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.68);
+      color: #fff;
+      font: 13px/1.4 system-ui, sans-serif;
+      white-space: nowrap;
+      pointer-events: none;
     }
 
     #unity-warning {
@@ -52,14 +133,66 @@
 </head>
 <body>
   <canvas id="unity-canvas" tabindex="-1"></canvas>
-  <div id="loading"><div id="loading-progress"></div></div>
+  <div id="overlay">
+    <div class="overlay-content">
+      <h1 id="scene-title">Community Game Development Toolkit</h1>
+      <p id="status">Loading viewer…</p>
+      <div id="loading-track"><div id="loading-progress"></div></div>
+      <p id="image-progress"></p>
+      <p id="error-details" hidden></p>
+      <div id="error-actions">
+        <button type="button" id="retry">Try again</button>
+        <a href="/">Back to scenes</a>
+      </div>
+    </div>
+  </div>
+  <div id="controls" hidden>Click to begin · WASD to move · Mouse to look</div>
   <div id="unity-warning"></div>
 
   <script>
     const canvas = document.querySelector("#unity-canvas");
-    const loading = document.querySelector("#loading");
+    const overlay = document.querySelector("#overlay");
     const loadingProgress = document.querySelector("#loading-progress");
+    const sceneTitle = document.querySelector("#scene-title");
+    const status = document.querySelector("#status");
+    const imageProgress = document.querySelector("#image-progress");
+    const errorDetails = document.querySelector("#error-details");
+    const controls = document.querySelector("#controls");
     const warningBanner = document.querySelector("#unity-warning");
+
+    document.querySelector("#retry").onclick = () => location.reload();
+
+    window.toolkitViewerSetStatus = (message, current, total) => {
+      overlay.hidden = false;
+      overlay.classList.remove("is-error");
+      status.textContent = message;
+      imageProgress.textContent = total > 0 ? `${current} of ${total}` : "";
+      loadingProgress.style.width = total > 0 ? `${current / total * 100}%` : "100%";
+    };
+
+    window.toolkitViewerSetTitle = title => {
+      sceneTitle.textContent = title;
+      document.title = title;
+    };
+
+    window.toolkitViewerShowReady = failedImageCount => {
+      overlay.hidden = true;
+      if (failedImageCount > 0) {
+        showBanner(`${failedImageCount} image${failedImageCount === 1 ? "" : "s"} could not be loaded.`, "warning");
+      }
+      controls.hidden = false;
+      setTimeout(() => controls.hidden = true, 7000);
+      canvas.focus();
+    };
+
+    window.toolkitViewerShowError = (message, details) => {
+      overlay.hidden = false;
+      overlay.classList.add("is-error");
+      sceneTitle.textContent = "Unable to load scene";
+      status.textContent = message;
+      errorDetails.textContent = details;
+      errorDetails.hidden = !details;
+    };
 
     function showBanner(message, type) {
       const notice = document.createElement("div");
@@ -93,11 +226,13 @@
       createUnityInstance(canvas, config, progress => {
         loadingProgress.style.width = (progress * 100) + "%";
       }).then(() => {
-        loading.remove();
+        if (!overlay.classList.contains("is-error")) {
+          status.textContent = "Loading scene…";
+          loadingProgress.style.width = "100%";
+        }
         canvas.focus();
       }).catch(message => {
-        loading.remove();
-        showBanner(message, "error");
+        window.toolkitViewerShowError("The viewer could not start.", String(message));
       });
     };
     document.body.appendChild(loaderScript);
