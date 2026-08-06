@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Toolkit - Viewer</title>
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #unity-canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      background: #000;
+      outline: none;
+    }
+
+    #loading {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      width: min(180px, 45vw);
+      height: 2px;
+      overflow: hidden;
+      transform: translate(-50%, -50%);
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    #loading-progress {
+      width: 0;
+      height: 100%;
+      background: #fff;
+    }
+
+    #unity-warning {
+      position: fixed;
+      z-index: 1;
+      top: 0;
+      left: 50%;
+      max-width: min(720px, 90vw);
+      transform: translateX(-50%);
+      font: 14px/1.4 sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="unity-canvas" tabindex="-1"></canvas>
+  <div id="loading"><div id="loading-progress"></div></div>
+  <div id="unity-warning"></div>
+
+  <script>
+    const canvas = document.querySelector("#unity-canvas");
+    const loading = document.querySelector("#loading");
+    const loadingProgress = document.querySelector("#loading-progress");
+    const warningBanner = document.querySelector("#unity-warning");
+
+    function showBanner(message, type) {
+      const notice = document.createElement("div");
+      notice.textContent = message;
+      notice.style.padding = "10px";
+      notice.style.background = type === "error" ? "#b00020" : "#e6b800";
+      notice.style.color = type === "error" ? "#fff" : "#111";
+      warningBanner.appendChild(notice);
+
+      if (type !== "error") {
+        setTimeout(() => notice.remove(), 5000);
+      }
+    }
+
+    const buildUrl = "Build";
+    const config = {
+      arguments: [],
+      dataUrl: buildUrl + "/WebGL.data",
+      frameworkUrl: buildUrl + "/WebGL.framework.js",
+      codeUrl: buildUrl + "/WebGL.wasm",
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: "DefaultCompany",
+      productName: "Toolkit - Viewer",
+      productVersion: "0.1.0",
+      showBanner: showBanner
+    };
+
+    const loaderScript = document.createElement("script");
+    loaderScript.src = buildUrl + "/WebGL.loader.js";
+    loaderScript.onload = () => {
+      createUnityInstance(canvas, config, progress => {
+        loadingProgress.style.width = (progress * 100) + "%";
+      }).then(() => {
+        loading.remove();
+        canvas.focus();
+      }).catch(message => {
+        loading.remove();
+        showBanner(message, "error");
+      });
+    };
+    document.body.appendChild(loaderScript);
+  </script>
+</body>
+</html>
