@@ -10,6 +10,139 @@ h1 {
     color: steelblue;
 }
 
+.home-page {
+    padding-bottom: 48px;
+}
+
+.home-header {
+    margin-bottom: 28px;
+}
+
+.home-header h1 {
+    margin: 4px 0 8px;
+    color: #0f172a;
+    font-size: clamp(2.25rem, 8vw, 4rem);
+    letter-spacing: -0.04em;
+}
+
+.home-header p:last-child {
+    margin: 0;
+    color: #64748b;
+}
+
+.eyebrow {
+    margin: 0;
+    color: #2563eb;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.scene-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+    gap: 18px;
+}
+
+.scene-card {
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    background: white;
+    color: inherit;
+    text-decoration: none;
+    box-shadow: 0 8px 28px rgb(15 23 42 / 7%);
+    transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.scene-card:hover,
+.scene-card:focus-visible {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 34px rgb(15 23 42 / 13%);
+}
+
+.scene-card:focus-visible {
+    outline: 3px solid #93c5fd;
+    outline-offset: 3px;
+}
+
+.scene-preview {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    background: #e2e8f0;
+}
+
+.scene-preview img {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    object-fit: cover;
+}
+
+.scene-preview-1 img {
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+}
+
+.scene-preview-2 img {
+    grid-row: 1 / -1;
+}
+
+.scene-preview-3 img:first-child {
+    grid-row: 1 / -1;
+}
+
+.scene-preview-empty {
+    display: grid;
+    place-items: center;
+    color: #64748b;
+    font-size: 0.875rem;
+}
+
+.scene-details {
+    padding: 16px 18px 18px;
+}
+
+.scene-details h2 {
+    margin: 0 0 5px;
+    overflow-wrap: anywhere;
+    color: #0f172a;
+    font-size: 1.1rem;
+}
+
+.scene-details p {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.875rem;
+}
+
+.scene-status {
+    grid-column: 1 / -1;
+    color: #64748b;
+}
+
+.scene-error {
+    color: #b91c1c;
+}
+
+.sessions-panel {
+    margin-top: 36px;
+    padding-top: 20px;
+    border-top: 1px solid #e2e8f0;
+    color: #64748b;
+}
+
+.sessions-panel summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
 /* Keep the real file input accessible, while presenting a large touch target. */
 #image {
     position: absolute;

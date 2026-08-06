@@ -1,11 +1,13 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
 
     <meta charset="UTF-8">
 
-    <title>Toolkit Server</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Community Game Development Toolkit</title>
 
     <link rel="stylesheet" href="style.css">
 
@@ -13,13 +15,22 @@
 
 <body>
 
-<h1>Toolkit Server</h1>
+<main class="home-page">
+    <header class="home-header">
+        <p class="eyebrow">Community Game Development Toolkit</p>
+        <h1>Scenes</h1>
+        <p>Choose a published scene to explore it in your browser.</p>
+    </header>
 
-<h2>Current Sessions</h2>
+    <div id="scenes" class="scene-grid" aria-live="polite">
+        <p class="scene-status">Loading scenes…</p>
+    </div>
 
-<div id="sessions">
-    Loading...
-</div>
+    <details class="sessions-panel">
+        <summary>Current upload sessions</summary>
+        <div id="sessions">Loading…</div>
+    </details>
+</main>
 
     <script src="script.js"></script>
 

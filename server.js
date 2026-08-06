@@ -113,6 +113,78 @@ app.get("/api/sessions", (req, res) => {
     res.json(Object.values(sessions));
 });
 
+// List published scenes for the public homepage. Scene manifests remain the
+// source of truth, so republishing automatically updates names and thumbnails.
+app.get("/api/scenes", (req, res) => {
+    const scenes = [];
+
+    try {
+        const sceneDirectories = fs.readdirSync(PUBLISHED_SCENES_DIRECTORY, {
+            withFileTypes: true
+        });
+
+        for (const directory of sceneDirectories) {
+            if (!directory.isDirectory() || !isSafeIdentifier(directory.name)) {
+                continue;
+            }
+
+            const manifestPath = path.join(
+                PUBLISHED_SCENES_DIRECTORY,
+                directory.name,
+                "scene.json"
+            );
+
+            if (!fs.existsSync(manifestPath)) {
+                continue;
+            }
+
+            try {
+                const sceneData = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+                const sceneObjects = Array.isArray(sceneData.objects) ? sceneData.objects : [];
+                const thumbnailUrls = sceneObjects
+                    .filter(sceneObject => {
+                        if (sceneObject?.type !== "image" ||
+                            typeof sceneObject.assetUrl !== "string" ||
+                            !sceneObject.assetUrl.startsWith("images/")) {
+                            return false;
+                        }
+
+                        const fileName = sceneObject.assetUrl.slice("images/".length);
+                        return isSafePngFileName(fileName) && fs.existsSync(
+                            path.join(PUBLISHED_SCENES_DIRECTORY, directory.name, "images", fileName)
+                        );
+                    })
+                    .slice(0, 3)
+                    .map(sceneObject =>
+                        `/scenes/${encodeURIComponent(directory.name)}/${sceneObject.assetUrl}`
+                    );
+
+                const publishedTitle = typeof sceneData.title === "string"
+                    ? sceneData.title.trim()
+                    : "";
+
+                scenes.push({
+                    sceneId: directory.name,
+                    title: publishedTitle || directory.name,
+                    hasPublishedTitle: Boolean(publishedTitle),
+                    imageCount: sceneObjects.filter(object => object?.type === "image").length,
+                    thumbnailUrls,
+                    viewerUrl: `/viewer/?scene=${encodeURIComponent(directory.name)}`,
+                    updatedAt: fs.statSync(manifestPath).mtime.toISOString()
+                });
+            } catch (error) {
+                console.warn(`Skipping unreadable scene ${directory.name}:`, error.message);
+            }
+        }
+
+        scenes.sort((first, second) => second.updatedAt.localeCompare(first.updatedAt));
+        return res.json(scenes);
+    } catch (error) {
+        console.error("Could not list published scenes:", error);
+        return res.status(500).json({ error: "Published scenes could not be listed." });
+    }
+});
+
 //**serve session page
 
 app.get("/session/:id", (req, res) => {
