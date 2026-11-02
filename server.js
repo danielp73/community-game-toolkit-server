@@ -1,5 +1,6 @@
 const express = require("express");
 const path = require("path");
+const { pathToFileURL } = require("url");
 const QRCode = require("qrcode");
 const multer = require("multer");
 const fs = require("fs");
@@ -24,6 +25,20 @@ const MAX_IMAGE_DIMENSION = 1000;
 // The medium model gave better quality without a meaningful speed penalty in
 // testing. Change this to "small" only if a later server benchmark improves.
 const BACKGROUND_REMOVAL_MODEL = "medium";
+
+// IMG.LY normally derives this path from process.cwd(). PM2 may start Node from
+// a different working directory, so use this project's absolute node_modules
+// path instead. The trailing slash is required for model-file URL resolution.
+const BACKGROUND_REMOVAL_PUBLIC_PATH = pathToFileURL(
+    path.join(
+        __dirname,
+        "node_modules",
+        "@imgly",
+        "background-removal-node",
+        "dist",
+        path.sep
+    )
+).href;
 
 // iPhones usually upload HEIC files with one of these MIME types. The filename
 // extension check below is a fallback for browsers that omit or mislabel it.
@@ -383,7 +398,8 @@ app.post(
             // was removed.
             const removalStartedAt = Date.now();
             const output = await removeBackground(input, {
-                model: BACKGROUND_REMOVAL_MODEL
+                model: BACKGROUND_REMOVAL_MODEL,
+                publicPath: BACKGROUND_REMOVAL_PUBLIC_PATH
             });
 
             console.log(
