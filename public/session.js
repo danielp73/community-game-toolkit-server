@@ -165,7 +165,22 @@ uploadButton.addEventListener("click", async () => {
             throw new Error("Upload failed.");
         }
 
-        setStatus("Upload successful.");
+        const result = await response.json();
+        setStatus("Upload successful. Returning to your scene…");
+
+        // A WebGL editor opens this page in a dedicated tab. Tell that opener
+        // exactly which processed PNG was saved, then close this tab. When the
+        // page was opened directly (for example from a QR code), it simply
+        // remains open and continues to show the success message.
+        if (window.opener && result.filename) {
+            window.opener.postMessage({
+                type: "toolkit-upload-complete",
+                sessionId,
+                filename: result.filename
+            }, window.location.origin);
+
+            setTimeout(() => window.close(), 500);
+        }
     } catch (error) {
         console.error(error);
         setStatus("Upload failed. Please try again.");

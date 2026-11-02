@@ -427,7 +427,9 @@ app.get("/api/session/:id/uploads", (req, res) => {
     const folder = path.join("uploads", sessionId);
 
     if (!fs.existsSync(folder)) {
-        return res.json([]);
+        // Keep the response shape stable before and after the first upload.
+        // Both Unity and the WebGL editor expect a MediaList-style object.
+        return res.json({ media: [] });
     }
 
     const files = fs.readdirSync(folder);

@@ -30,6 +30,31 @@ h1 {
     color: #64748b;
 }
 
+/* Downloads the Unity installer script from the public toolkit directory. */
+.installer-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    margin-top: 18px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    background: #2563eb;
+    color: white;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.installer-button:hover,
+.installer-button:focus-visible {
+    background: #1d4ed8;
+}
+
+.installer-button:focus-visible {
+    outline: 3px solid #93c5fd;
+    outline-offset: 3px;
+}
+
 .eyebrow {
     margin: 0;
     color: #2563eb;
@@ -141,6 +166,35 @@ h1 {
 .sessions-panel summary {
     cursor: pointer;
     font-weight: 600;
+}
+
+/* A clearly separated final section for people who want to install the Unity
+   toolkit instead of browsing the published scenes above. */
+.installer-section {
+    margin-top: 42px;
+    padding-top: 28px;
+    border-top: 1px solid #cbd5e1;
+}
+
+.installer-section h2 {
+    margin: 0 0 8px;
+    color: #0f172a;
+    font-size: 1.5rem;
+}
+
+.installer-section > p {
+    margin: 0;
+    color: #64748b;
+}
+
+.installer-steps {
+    margin: 20px 0 0;
+    padding-left: 24px;
+    color: #334155;
+}
+
+.installer-steps li + li {
+    margin-top: 9px;
 }
 
 /* Keep the real file input accessible, while presenting a large touch target. */
