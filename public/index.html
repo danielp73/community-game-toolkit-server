@@ -18,9 +18,43 @@
 <main class="home-page">
     <header class="home-header">
         <p class="eyebrow">Community Game Development Toolkit</p>
-        <h1>Scenes</h1>
-        <p>Choose a published scene to explore it in your browser.</p>
+        <h1>Create and explore scenes</h1>
+        <p>Build a new scene, continue an existing one, or explore a published scene.</p>
     </header>
+
+    <section class="scene-actions" aria-labelledby="scene-actions-heading">
+        <div class="scene-action-copy">
+            <h2 id="scene-actions-heading">Make a Scene</h2>
+            <p>Compose a scene directly in your browser.</p>
+        </div>
+
+        <div class="scene-action-controls">
+            <a class="scene-action-button scene-action-primary" href="/editor/">
+                Create New Scene
+            </a>
+
+            <form id="open-scene-form" class="open-scene-form">
+                <label for="scene-code">Open an existing scene</label>
+                <div class="scene-code-row">
+                    <input
+                        id="scene-code"
+                        name="sceneCode"
+                        type="text"
+                        maxlength="64"
+                        autocomplete="off"
+                        placeholder="Enter scene code"
+                        required>
+                    <button type="submit">Open Scene</button>
+                </div>
+                <p id="open-scene-message" class="form-message" aria-live="polite"></p>
+            </form>
+        </div>
+    </section>
+
+    <section class="published-scenes" aria-labelledby="published-scenes-heading">
+        <h2 id="published-scenes-heading">Published Scenes</h2>
+        <p>Choose a scene to explore it in the viewer.</p>
+    </section>
 
     <div id="scenes" class="scene-grid" aria-live="polite">
         <p class="scene-status">Loading scenes…</p>

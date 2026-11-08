@@ -73,7 +73,23 @@
 
     <p id="status" role="status" aria-live="polite"></p>
 
+    <section aria-labelledby="sound-heading" class="audio-panel">
+        <h2 id="sound-heading">Share a sound</h2>
+        <p>Record up to five minutes, or choose an existing audio file (15 MB maximum).</p>
+        <button type="button" id="record-audio">Record</button>
+        <button type="button" id="stop-audio" disabled>Stop</button>
+        <p><label for="audio-file">Choose an audio file</label>
+        <input type="file" id="audio-file" accept="audio/*,.webm,.ogg,.mp3,.wav,.m4a,.mp4,.aac,.flac"></p>
+        <audio id="audio-preview" controls hidden style="width:100%"></audio>
+        <button type="button" id="submit-audio" disabled>Upload sound</button>
+        <p id="audio-status" role="status" aria-live="polite"></p>
+    </section>
+    <section aria-labelledby="uploads-heading">
+        <h2 id="uploads-heading">Session uploads</h2>
+        <div id="session-uploads"></div>
+    </section>
     <script src="/session.js"></script>
+    <script src="/audio.js"></script>
 
 </body>
 

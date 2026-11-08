@@ -30,6 +30,115 @@ h1 {
     color: #64748b;
 }
 
+.scene-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(280px, 1.2fr);
+    gap: 24px;
+    margin-bottom: 42px;
+    padding: 24px;
+    border: 1px solid #bfdbfe;
+    border-radius: 18px;
+    background: #eff6ff;
+}
+
+.scene-action-copy h2,
+.published-scenes h2 {
+    margin: 0 0 7px;
+    color: #0f172a;
+}
+
+.scene-action-copy p,
+.published-scenes p {
+    margin: 0;
+    color: #64748b;
+}
+
+.scene-action-controls {
+    display: grid;
+    gap: 18px;
+}
+
+.scene-action-button {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+    padding: 12px 18px;
+    border-radius: 10px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.scene-action-primary {
+    background: #2563eb;
+    color: #fff;
+}
+
+.scene-action-primary:hover,
+.scene-action-primary:focus-visible {
+    background: #1d4ed8;
+}
+
+.open-scene-form label {
+    display: block;
+    margin-bottom: 7px;
+    color: #334155;
+    font-size: 0.875rem;
+    font-weight: 700;
+}
+
+.scene-code-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+}
+
+.scene-code-row input {
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid #94a3b8;
+    border-radius: 10px;
+    background: #fff;
+    color: #0f172a;
+    font: inherit;
+}
+
+.scene-code-row input:focus {
+    border-color: #2563eb;
+    outline: 3px solid #bfdbfe;
+}
+
+.scene-code-row button {
+    min-height: 44px;
+    padding: 9px 14px;
+}
+
+.form-message {
+    min-height: 1.25em;
+    margin: 7px 0 0;
+    color: #64748b;
+    font-size: 0.875rem;
+}
+
+.form-error {
+    color: #b91c1c;
+}
+
+.published-scenes {
+    margin-bottom: 18px;
+}
+
+@media (max-width: 620px) {
+    .scene-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .scene-code-row {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Downloads the Unity installer script from the public toolkit directory. */
 .installer-button {
     display: inline-flex;

@@ -1,17 +1,21 @@
 const express = require("express");
 const path = require("path");
-const { pathToFileURL } = require("url");
 const QRCode = require("qrcode");
 const multer = require("multer");
 const fs = require("fs");
 const sharp = require("sharp");
 const convertHeic = require("heic-convert");
-const { removeBackground } = require("@imgly/background-removal-node");
+
+const { audioExtension, saveAudio } = require("./audio-uploads");
+
+const { prepareSceneAudio, copySceneAudio } = require("./scene-audio");
 
 const app = express();
 
 const PORT = Number(process.env.PORT) || 8000;
 const SERVER_URL = process.env.SERVER_URL || `https://share.communitygametoolkit.org`;
+const PHOTOROOM_API_KEY = process.env.PHOTOROOM_API_KEY || "";
+const PHOTOROOM_SEGMENT_URL = "https://sdk.photoroom.com/v1/segment";
 
 // DEVELOPMENT ONLY — set this to false (or remove this block) before deploying
 // to production. It creates a fresh session every time this server starts, so
@@ -21,24 +25,6 @@ const CREATE_TEST_SESSION_ON_STARTUP = true;
 // Change this one value to set the maximum width or height of every image that
 // enters the editor. Images retain their original shape and are never enlarged.
 const MAX_IMAGE_DIMENSION = 1000;
-
-// The medium model gave better quality without a meaningful speed penalty in
-// testing. Change this to "small" only if a later server benchmark improves.
-const BACKGROUND_REMOVAL_MODEL = "medium";
-
-// IMG.LY normally derives this path from process.cwd(). PM2 may start Node from
-// a different working directory, so use this project's absolute node_modules
-// path instead. The trailing slash is required for model-file URL resolution.
-const BACKGROUND_REMOVAL_PUBLIC_PATH = pathToFileURL(
-    path.join(
-        __dirname,
-        "node_modules",
-        "@imgly",
-        "background-removal-node",
-        "dist",
-        path.sep
-    )
-).href;
 
 // iPhones usually upload HEIC files with one of these MIME types. The filename
 // extension check below is a fallback for browsers that omit or mislabel it.
@@ -73,9 +59,15 @@ const upload = multer({
     limits: {
         // A friendly upper limit for mobile camera photos. It also prevents a
         // very large file from exhausting memory during background removal.
-        fileSize: 15 * 1024 * 1024
+        fileSize: 15 * 1024 * 1024,
+        files: 1, fields: 0, parts: 2
     },
-    fileFilter: imageFileFilter
+    fileFilter(req, file, callback) {
+        if (file.fieldname === "audio") {
+            try { audioExtension(file); callback(null, true); }
+            catch (error) { callback(error); }
+        } else { imageFileFilter(req, file, callback); }
+    }
 });
 
 // Keep large temporary editor images on disk rather than in Node's memory. The
@@ -107,6 +99,15 @@ const sceneBundleUpload = multer({
 // Published scenes are replaceable content. Prevent browsers and hosting
 // proxies from keeping an older scene.json or an older image with the same URL.
 app.use("/scenes", (req, res, next) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    next();
+});
+
+// The web editor is still under active development. Always revalidate its HTML,
+// JavaScript, WebAssembly, and data files so a normal reload uses the latest build.
+app.use("/editor", (req, res, next) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
@@ -164,6 +165,13 @@ app.get("/api/scenes", (req, res) => {
 
             try {
                 const sceneData = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+
+                // Older manifests predate this field and remain public for
+                // backward compatibility. Only an explicit false hides a scene.
+                if (sceneData.isPublic === false) {
+                    continue;
+                }
+
                 const sceneObjects = Array.isArray(sceneData.objects) ? sceneData.objects : [];
                 const thumbnailUrls = sceneObjects
                     .filter(sceneObject => {
@@ -207,6 +215,24 @@ app.get("/api/scenes", (req, res) => {
         console.error("Could not list published scenes:", error);
         return res.status(500).json({ error: "Published scenes could not be listed." });
     }
+});
+
+// Check one user-supplied scene code without including private scenes in the
+// public scene list. Codes act as unlisted identifiers for private scenes.
+app.get("/api/scenes/:sceneId/status", (req, res) => {
+    const sceneId = req.params.sceneId;
+
+    if (!isSafeIdentifier(sceneId)) {
+        return res.status(400).json({ error: "Invalid scene ID." });
+    }
+
+    const manifestPath = path.join(
+        PUBLISHED_SCENES_DIRECTORY,
+        sceneId,
+        "scene.json"
+    );
+
+    return res.json({ exists: fs.existsSync(manifestPath) });
 });
 
 //**serve session page
@@ -274,7 +300,20 @@ app.get("/api/session/:id", (req, res) => {
 
 app.post(
     "/api/session/:id/upload",
-    upload.single("image"),
+    (req, res, next) => {
+        if (!sessions[req.params.id]) return res.status(404).json({ error: "Session not found." });
+        upload.fields([{ name: "image", maxCount: 1 }, { name: "audio", maxCount: 1 }])(req, res, error => {
+            const files = Object.values(req.files || {}).flat();
+            if (error || files.length !== 1) {
+                files.forEach(file => removeTemporaryFile(file.path));
+                return res.status(error?.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({
+                    error: error?.code === "LIMIT_FILE_SIZE" ? "Files must be 15 MB or smaller." : error?.message || "Choose one image or audio file."
+                });
+            }
+            req.file = files[0];
+            next();
+        });
+    },
     async (req, res) => {
 
         const sessionId = req.params.id;
@@ -285,6 +324,15 @@ app.post(
 
         if (!req.file) {
             return res.status(400).send("No file uploaded.");
+        }
+
+        if (req.file.fieldname === "audio") {
+            try {
+                const filename = saveAudio(req.file, sessionId);
+                return res.json({ success: true, filename });
+            } catch (error) {
+                return res.status(422).json({ error: error.message });
+            } finally { removeTemporaryFile(req.file.path); }
         }
 
         try {
@@ -386,29 +434,47 @@ app.post(
                 `[Background removal] Resize completed in ${Date.now() - resizeStartedAt}ms.`
             );
 
-            // The package needs both image bytes and a MIME type to choose the
-            // correct decoder. A raw Node Buffer has no MIME type, so wrap it
-            // in a typed Blob.
-            const input = new Blob([resizedImage], {
-                type: "image/png"
+            if (!PHOTOROOM_API_KEY) {
+                return res.status(503).json({
+                    error: "Background removal is not configured on this server."
+                });
+            }
+
+            // PhotoRoom performs the expensive segmentation on its own
+            // infrastructure. This server only forwards the already-resized
+            // PNG and relays the transparent PNG response to the browser.
+            const formData = new FormData();
+            formData.append(
+                "image_file",
+                new Blob([resizedImage], { type: "image/png" }),
+                "toolkit-image.png"
+            );
+            formData.append("format", "png");
+
+            const removalStartedAt = Date.now();
+            const photoRoomResponse = await fetch(PHOTOROOM_SEGMENT_URL, {
+                method: "POST",
+                headers: {
+                    "x-api-key": PHOTOROOM_API_KEY
+                },
+                body: formData,
+                signal: AbortSignal.timeout(60000)
             });
 
-            // The package runs its segmentation model on this Node server. It
-            // returns a PNG Blob with transparent pixels where the background
-            // was removed.
-            const removalStartedAt = Date.now();
-            const output = await removeBackground(input, {
-                model: BACKGROUND_REMOVAL_MODEL,
-                publicPath: BACKGROUND_REMOVAL_PUBLIC_PATH
-            });
+            if (!photoRoomResponse.ok) {
+                const responseText = await photoRoomResponse.text();
+                throw new Error(
+                    `PhotoRoom returned ${photoRoomResponse.status}: ${responseText}`
+                );
+            }
 
             console.log(
-                `[Background removal] IMG.LY removal completed in ` +
+                `[Background removal] PhotoRoom removal completed in ` +
                 `${Date.now() - removalStartedAt}ms.`
             );
 
             const outputConversionStartedAt = Date.now();
-            const pngBuffer = Buffer.from(await output.arrayBuffer());
+            const pngBuffer = Buffer.from(await photoRoomResponse.arrayBuffer());
 
             console.log(
                 `[Background removal] Output conversion completed in ` +
@@ -439,6 +505,7 @@ app.post(
 app.get("/api/session/:id/uploads", (req, res) => {
 
     const sessionId = req.params.id;
+    if (!sessions[sessionId]) return res.status(404).json({ error: "Session not found." });
 
     const folder = path.join("uploads", sessionId);
 
@@ -492,6 +559,10 @@ app.post(
                 return res.status(400).json({
                     error: "The URL scene ID does not match scene.json."
                 });
+            }
+
+            if ((sceneData.objects || []).some(item => item?.type === "audio")) {
+                return res.status(400).json({ error: "Use the JSON scene save endpoint for audio scenes." });
             }
 
             const uploadedImages = new Map();
@@ -641,6 +712,8 @@ app.post("/api/scenes/:sceneId/json", (req, res) => {
             uploadedImages.set(submittedImage.fileName, imageBuffer);
         }
 
+        const audioFiles = prepareSceneAudio(sceneData, req.body.audio || [], __dirname);
+
         const sceneObjects = Array.isArray(sceneData.objects) ? sceneData.objects : [];
 
         for (const sceneObject of sceneObjects) {
@@ -676,6 +749,8 @@ app.post("/api/scenes/:sceneId/json", (req, res) => {
             fs.writeFileSync(path.join(stagingImagesDirectory, fileName), imageBuffer);
         }
 
+        copySceneAudio(audioFiles, stagingDirectory);
+
         const destinationDirectory = path.join(PUBLISHED_SCENES_DIRECTORY, sceneId);
         replaceDirectory(stagingDirectory, destinationDirectory);
         stagingDirectory = undefined;
@@ -690,7 +765,7 @@ app.post("/api/scenes/:sceneId/json", (req, res) => {
         });
     } catch (error) {
         console.error("JSON scene publishing failed:", error);
-        return res.status(500).json({ error: "The scene could not be published." });
+        return res.status(error.status || 500).json({ error: error.status ? error.message : "The scene could not be published." });
     } finally {
         if (stagingDirectory) {
             fs.rmSync(stagingDirectory, { recursive: true, force: true });

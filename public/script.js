@@ -1,3 +1,5 @@
+let publishedScenes = [];
+
 async function loadScenes() {
     const container = document.getElementById("scenes");
 
@@ -9,6 +11,7 @@ async function loadScenes() {
         }
 
         const scenes = await response.json();
+        publishedScenes = scenes;
         container.replaceChildren();
 
         if (scenes.length === 0) {
@@ -30,6 +33,47 @@ async function loadScenes() {
         container.appendChild(errorMessage);
     }
 }
+
+document.getElementById("open-scene-form").addEventListener("submit", async event => {
+    event.preventDefault();
+
+    const codeInput = document.getElementById("scene-code");
+    const message = document.getElementById("open-scene-message");
+    const code = codeInput.value.trim();
+
+    message.classList.remove("form-error");
+    message.textContent = "";
+
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(code)) {
+        message.classList.add("form-error");
+        message.textContent = "Enter a valid scene code.";
+        return;
+    }
+
+    try {
+        // Check the entered code directly. Private scenes are intentionally not
+        // exposed by the public /api/scenes listing.
+        const response = await fetch(
+            `/api/scenes/${encodeURIComponent(code)}/status`,
+            { cache: "no-store" }
+        );
+        if (!response.ok) {
+            throw new Error("Scene status unavailable.");
+        }
+
+        const sceneStatus = await response.json();
+        if (!sceneStatus.exists) {
+            message.classList.add("form-error");
+            message.textContent = `No scene was found with the code “${code}”.`;
+            return;
+        }
+
+        window.location.href = `/editor/?scene=${encodeURIComponent(code)}`;
+    } catch (error) {
+        message.classList.add("form-error");
+        message.textContent = "The scene could not be checked. Please try again.";
+    }
+});
 
 function createSceneCard(scene) {
     const link = document.createElement("a");

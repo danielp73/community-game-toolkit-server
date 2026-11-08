@@ -166,6 +166,7 @@ uploadButton.addEventListener("click", async () => {
         }
 
         const result = await response.json();
+        window.dispatchEvent(new Event("toolkit-media-uploaded"));
         setStatus("Upload successful. Returning to your scene…");
 
         // A WebGL editor opens this page in a dedicated tab. Tell that opener

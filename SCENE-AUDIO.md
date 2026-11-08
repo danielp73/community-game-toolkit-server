@@ -1,0 +1,22 @@
+# Sound in the web editor
+
+The upload page only records/previews/uploads. The initial sound-choice dialog includes a required descriptive name (3–40 characters) for either background or located sound. Names are saved in `audio.displayName` and used by the background mixer. Blank, whitespace-only, shorter, and overlong names cannot be submitted. The editor also validates this rule when creating a sound. Existing unnamed sounds are ordered consistently by object ID so their fallback labels do not swap across reloads. After an audio upload, a centered dialog in the editor offers **Background sound** or **Located sound**. Background sounds loop automatically when the scene starts (after the browser's first audio-enabling gesture).
+
+Located sounds appear as a speaker icon carried two metres in front of the camera. Move with WASD and look around to position it, then click the scene to place it. Press Escape to cancel. Aim at a placed speaker and click to move it again. Unfinished new placements are omitted from saves; a sound being repositioned retains its previous committed position until placement is confirmed. Multiple uploaded sounds are handled one at a time.
+
+Press **B** or click **B · Background sounds** to open a centered mixer in the editor. It lists only background sounds. Each has a volume slider, a mute/unmute button that preserves its volume, and a remove button. Changes use normal scene autosaving. Close with Done, B, or Escape. Movement is paused while the menu is open.
+
+Press **M** to toggle overall playback in either the editor or viewer. This is a local playback control; it does not change the scene's saved per-sound volume or mute settings. B/M shortcuts ignore modified key combinations, key repeats, and text/form editing. New uploads wait until the background menu closes before showing their choice dialog.
+
+
+The cyan radius ring and speaker icon are visible only in the editor. Local sound fades linearly with 3D distance to silence at the saved radius (10 metres by default). Background sounds are heard everywhere. There is no persistent corner sound-settings panel. A small sound-enable/mute button handles browser playback permission.
+
+Click the scene to enable sound when entering a saved scene, or use **Enable sound**. Browsers require a user gesture before audio can begin. Choosing either sound option also enables audio. The browser plays original files through media elements and a Web Audio gain node, avoiding server conversion and Unity audio-decoder format restrictions. Codec support still depends on the browser; playback failures are shown in the sound panel.
+
+Sound filenames use stable object IDs. After successful saving, the editor updates source references to the committed bundle so later autosaves do not depend on renamed files.
+
+Scene JSON adds objects with `type: "audio"`, `assetUrl: "audio/<filename>"`, the existing transform, and `audio: { displayName, spatial, muted, volume, radius, loop, autoplay }`. The web editor adds `audio: [{ fileName, sourceUrl }]` to its existing JSON save request. The server validates playback settings and sources and copies sounds from existing server-local upload or scene folders into the scene bundle. No remote source URLs are fetched and no audio is base64-encoded. Limits: 16 sounds per scene, 15 MiB per file, 100 MiB of audio per scene. Image-only saves remain compatible. Legacy multipart scene publishing rejects audio with a message directing clients to the JSON endpoint.
+
+Runtime Unity changes live in Toolkit - Viewer: `ToolkitSceneAudio.cs`, the scene object data, loader, editor, browser bridge, and both WebGL templates. Both apps must be rebuilt. Serve the resulting `Builds/EditorWebGL` at `/editor/`, `Builds/WebGL` at `/viewer/`, and `public/scene-audio.js` at `/scene-audio.js` with the updated `server.js` and `scene-audio.js` server helper.
+
+Run `node --test tests/scene-audio*.test.js` for server save/reopen and browser control/attenuation tests. Physical phone microphone/codec playback checks remain separate.
