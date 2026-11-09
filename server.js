@@ -46,6 +46,11 @@ fs.mkdirSync(TEMP_UPLOAD_DIRECTORY, { recursive: true });
 const PUBLISHED_SCENES_DIRECTORY = path.join(__dirname, "public", "scenes");
 fs.mkdirSync(PUBLISHED_SCENES_DIRECTORY, { recursive: true });
 
+// Use the same upload folder for writes, serving, and scene saves. Preserve
+// deployments launched by PM2 from a parent directory; no media migration needed.
+const UPLOADS_DIRECTORY = path.resolve(process.env.TOOLKIT_UPLOADS_DIRECTORY || "uploads");
+fs.mkdirSync(UPLOADS_DIRECTORY, { recursive: true });
+
 const sessions = {};
 
 // Scene publishing can include several base64-encoded PNGs in one JSON request.
@@ -115,7 +120,7 @@ app.use("/editor", (req, res, next) => {
 });
 
 app.use(express.static(path.join(__dirname, "public")));
-app.use("/uploads", express.static("uploads"));
+app.use("/uploads", express.static(UPLOADS_DIRECTORY));
 
 
 //**create session
@@ -328,7 +333,7 @@ app.post(
 
         if (req.file.fieldname === "audio") {
             try {
-                const filename = saveAudio(req.file, sessionId);
+                const filename = saveAudio(req.file, sessionId, UPLOADS_DIRECTORY);
                 return res.json({ success: true, filename });
             } catch (error) {
                 return res.status(422).json({ error: error.message });
@@ -345,7 +350,7 @@ app.post(
             );
 
             // Create the session folder if needed.
-            const sessionFolder = path.join("uploads", sessionId);
+            const sessionFolder = path.join(UPLOADS_DIRECTORY, sessionId);
             fs.mkdirSync(sessionFolder, { recursive: true });
 
             // Every processed upload is PNG, regardless of its original format.
@@ -507,7 +512,7 @@ app.get("/api/session/:id/uploads", (req, res) => {
     const sessionId = req.params.id;
     if (!sessions[sessionId]) return res.status(404).json({ error: "Session not found." });
 
-    const folder = path.join("uploads", sessionId);
+    const folder = path.join(UPLOADS_DIRECTORY, sessionId);
 
     if (!fs.existsSync(folder)) {
         // Keep the response shape stable before and after the first upload.
@@ -694,6 +699,11 @@ app.post("/api/scenes/:sceneId/json", (req, res) => {
                 });
             }
 
+            if (typeof submittedImage.sourceUrl === "string") {
+                uploadedImages.set(submittedImage.fileName, resolveSceneImageSource(submittedImage.sourceUrl));
+                continue;
+            }
+
             if (typeof submittedImage.base64Data !== "string" ||
                 !isValidBase64(submittedImage.base64Data)) {
                 return res.status(400).json({
@@ -712,7 +722,7 @@ app.post("/api/scenes/:sceneId/json", (req, res) => {
             uploadedImages.set(submittedImage.fileName, imageBuffer);
         }
 
-        const audioFiles = prepareSceneAudio(sceneData, req.body.audio || [], __dirname);
+        const audioFiles = prepareSceneAudio(sceneData, req.body.audio || [], __dirname, UPLOADS_DIRECTORY);
 
         const sceneObjects = Array.isArray(sceneData.objects) ? sceneData.objects : [];
 
@@ -746,7 +756,9 @@ app.post("/api/scenes/:sceneId/json", (req, res) => {
         fs.writeFileSync(path.join(stagingDirectory, "scene.json"), req.body.sceneJson);
 
         for (const [fileName, imageBuffer] of uploadedImages) {
-            fs.writeFileSync(path.join(stagingImagesDirectory, fileName), imageBuffer);
+            const destination = path.join(stagingImagesDirectory, fileName);
+            if (Buffer.isBuffer(imageBuffer)) fs.writeFileSync(destination, imageBuffer);
+            else fs.copyFileSync(imageBuffer, destination);
         }
 
         copySceneAudio(audioFiles, stagingDirectory);
@@ -938,4 +950,28 @@ function removeTemporaryFile(filePath) {
     if (filePath && fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
     }
+}
+
+// Resolve existing media on disk only; a save never fetches arbitrary URLs.
+function resolveSceneImageSource(sourceUrl) {
+    const fail = (message, status = 400) => { const error = new Error(message); error.status = status; throw error; };
+    let pathname;
+    try { pathname = decodeURIComponent(new URL(sourceUrl, "http://local").pathname); }
+    catch { fail("Invalid image source."); }
+    if (!/^\/(uploads\/[A-Za-z0-9_-]{1,64}|scenes\/[A-Za-z0-9_-]{1,64}\/images)\/[A-Za-z0-9_-]+\.png$/i.test(pathname))
+        fail("Image must come from a session or a saved scene.");
+    const isUpload = pathname.startsWith("/uploads/");
+    const root = fs.realpathSync(isUpload ? UPLOADS_DIRECTORY : path.join(__dirname, "public"));
+    const filename = path.join(root, isUpload ? pathname.slice("/uploads/".length) : pathname.slice(1));
+    if (!fs.existsSync(filename)) fail("An image source is missing. Upload it again.");
+    const real = fs.realpathSync(filename);
+    if (real !== path.resolve(filename) || !real.startsWith(root + path.sep)) fail("Invalid image source path.");
+    const info = fs.statSync(real);
+    if (!info.isFile()) fail("Invalid image source file.");
+    if (info.size > 15 * 1024 * 1024) fail("An image is too large (maximum 15 MB).", 413);
+    const header = Buffer.alloc(8);
+    const fd = fs.openSync(real, "r");
+    try { fs.readSync(fd, header, 0, 8, 0); } finally { fs.closeSync(fd); }
+    if (!header.equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) fail("Image source must be a PNG.");
+    return real;
 }

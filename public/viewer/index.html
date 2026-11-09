@@ -146,11 +146,13 @@
       </div>
     </div>
   </div>
-  <div id="controls" hidden>Click to begin · WASD to move · Mouse to look</div>
+  <div id="controls" hidden>Click to begin · WASD to move · Q up / E down · Mouse to look</div>
   <div id="unity-warning"></div>
 
   <script src="/scene-audio.js"></script>
   <script>
+    let sceneHasLoaded = false;
+    let unityInstance = null;
     const canvas = document.querySelector("#unity-canvas");
     const overlay = document.querySelector("#overlay");
     const loadingProgress = document.querySelector("#loading-progress");
@@ -181,9 +183,9 @@
       if (failedImageCount > 0) {
         showBanner(`${failedImageCount} image${failedImageCount === 1 ? "" : "s"} could not be loaded.`, "warning");
       }
-      controls.hidden = false;
-      setTimeout(() => controls.hidden = true, 7000);
-      canvas.focus();
+      controls.hidden = true;
+      sceneHasLoaded = true;
+      if (unityInstance) window.toolkitAudio?.ready();
     };
 
     window.toolkitViewerShowError = (message, details) => {
@@ -226,12 +228,14 @@
     loaderScript.onload = () => {
       createUnityInstance(canvas, config, progress => {
         loadingProgress.style.width = (progress * 100) + "%";
-      }).then(() => {
+      }).then(instance => {
+        unityInstance = instance;
+        if (sceneHasLoaded) window.toolkitAudio?.ready();
         if (!overlay.classList.contains("is-error")) {
           status.textContent = "Loading scene…";
           loadingProgress.style.width = "100%";
         }
-        canvas.focus();
+        if (!window.toolkitAudio?.isWaitingToStart()) canvas.focus();
       }).catch(message => {
         window.toolkitViewerShowError("The viewer could not start.", String(message));
       });

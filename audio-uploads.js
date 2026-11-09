@@ -44,9 +44,9 @@ function validateAudio(file) {
     if (!valid) throw new Error('This file does not match its audio format. Choose another recording.');
     return ext;
 }
-function saveAudio(file, sessionId) {
+function saveAudio(file, sessionId, uploadsDirectory = path.resolve('uploads')) {
     const ext = validateAudio(file);
-    const folder = path.join('uploads', sessionId);
+    const folder = path.join(uploadsDirectory, sessionId);
     fs.mkdirSync(folder, { recursive: true });
     const filename = `${randomUUID()}${ext}`;
     fs.renameSync(file.path, path.join(folder, filename));

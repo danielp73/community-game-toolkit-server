@@ -14,6 +14,7 @@
     };
     requestSceneControl = () => { sceneGesture = true; canvas.focus(); canvas.requestPointerLock(); };
   }
+  let started = false;
   const editing = location.pathname.startsWith('/editor');
   const sounds = new Map(), uploads = [];
   let context, enabled = false, placementPending = false, placementId = null;
@@ -21,7 +22,7 @@
   const pendingRemovals = new Set();
   function send(method, data) { window.toolkitAudioSend?.(method, typeof data === 'string' ? data : JSON.stringify(data)); }
   const toggle = document.createElement('button');
-  toggle.id = 'scene-sound-toggle'; toggle.textContent = 'Enable sound · M';
+  toggle.id = 'scene-sound-toggle'; toggle.textContent = 'Unmute Sounds [M]';
   toggle.title = 'Mute or unmute all sound (M)';
   toggle.style.cssText = 'margin-top:8px;padding:8px 14px;border:1px solid #63738c;border-radius:20px;background:#24344f;color:#fff;font:600 13px system-ui;cursor:pointer';
   const toolbar = document.getElementById?.('save-panel');
@@ -46,7 +47,7 @@
     if (error?.name === 'AbortError') return; // Muting/loading can cancel play().
     if (error?.name === 'NotAllowedError') {
       playbackProblem = item;
-      say('Click Enable sound to allow playback.');
+      say('Click Unmute Sounds to allow playback.');
       return;
     }
     let message;
@@ -91,13 +92,13 @@
     for (const item of sounds.values()) item.element.pause();
   };
   function syncGlobalSoundButtons() {
-    toggle.textContent = enabled ? 'Mute sound · M' : 'Enable sound · M';
+    toggle.textContent = enabled ? 'Mute Sounds [M]' : 'Unmute Sounds [M]';
     if (menuGlobalToggle) menuGlobalToggle.textContent = enabled ? 'Mute all · M' : 'Enable sound · M';
   }
   // Scene entry is a browser-approved gesture for autoplay, including a saved
   // background loop. The explicit toggle remains available as a fallback.
-  canvas?.addEventListener('pointerdown', () => { if (!context) enableSound(); });
-  if (editing) canvas?.addEventListener('click', () => send('HandleSceneAudioClick', ''));
+  canvas?.addEventListener('pointerdown', () => { if (started && !context) enableSound(); });
+  if (editing) canvas?.addEventListener('click', () => { if (started) send('HandleSceneAudioClick', ''); });
 
   const dialog = document.createElement('dialog');
   dialog.id = 'sound-choice'; dialog.setAttribute('aria-labelledby', 'sound-choice-title');
@@ -141,7 +142,7 @@
     dialog.close(); currentUpload = null; send('SetSoundChoiceVisible', '0');
   }
   function showNext() {
-    if (!editing || currentUpload || backgroundMenu?.open || placementPending || !uploads.length) return;
+    if (!started || !editing || currentUpload || backgroundMenu?.open || placementPending || !uploads.length) return;
     currentUpload = uploads.shift(); soundName.value = ''; updateNameValidity();
     document.exitPointerLock?.(); send('SetSoundChoiceVisible', '1');
     dialog.showModal(); soundName.focus?.();
@@ -155,7 +156,7 @@
     closeChoice();
     placementPending = spatial;
     enableSound();
-    send('AddSceneAudio', { sourceUrl, audio: { displayName, spatial, volume: 1, radius: 10, loop: true, autoplay: true } });
+    send('AddSceneAudio', { sourceUrl, audio: { displayName, spatial, volume: 1, radius: 3, loop: true, autoplay: true } });
     if (spatial) requestSceneControl();
     else { say(''); showNext(); }
   }
@@ -221,7 +222,7 @@
     syncGlobalSoundButtons();
   }
   function openBackgrounds() {
-    if (!editing || currentUpload || backgroundMenu.open) return;
+    if (!started || !editing || currentUpload || backgroundMenu.open) return;
     document.exitPointerLock?.(); send('SetSoundChoiceVisible', '1');
     backgroundMenu.showModal(); renderBackgrounds();
   }
@@ -233,7 +234,7 @@
   }
   if (editing) {
     const button = document.createElement('button'); button.id = 'background-sounds-button';
-    button.textContent = 'B · Background sounds'; button.title = 'Manage background sounds (B)';
+    button.textContent = 'Edit Background Sounds [B]'; button.title = 'Manage background sounds (B)';
     button.style.cssText = toggle.style.cssText;
     button.onclick = openBackgrounds;
     (toolbar || document.body).append(button);
@@ -258,16 +259,59 @@
     syncGlobalSoundButtons();
   }
   window.addEventListener('keydown', event => {
+    if (!started) return;
     if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
     const key = event.key?.toLowerCase();
     if (key === 'm') {
       event.preventDefault(); event.stopImmediatePropagation(); toggle.onclick();
+    } else if (editing && key === 'x') {
+      if (currentUpload) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      location.href = '/';
+    } else if (editing && (key === 'delete' || key === 'backspace')) {
+      if (currentUpload || backgroundMenu?.open) return;
+      const sceneFocused = Boolean(canvas && (event.target === canvas || document.pointerLockElement === canvas)) || event.target?.closest?.('#rotation-controls');
+      if (!sceneFocused) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      send('DeleteSelectedObject', '');
     } else if (editing && key === 'b') {
       event.preventDefault(); event.stopImmediatePropagation();
       if (backgroundMenu.open) closeBackgrounds(); else openBackgrounds();
     }
   }, true);
+  const entry = document.createElement('div');
+  entry.id = 'scene-start'; entry.hidden = true;
+  entry.style.cssText = 'position:fixed;inset:0;z-index:1000;background:#09132199;display:none;align-items:center;justify-content:center;text-align:center;color:white;font:18px/1.5 system-ui';
+  const entryCard = document.createElement('div');
+  entryCard.style.cssText = 'padding:36px 44px;border:1px solid #8498b5;border-radius:20px;background:#172033;box-shadow:0 20px 80px #0008;max-width:calc(100vw - 100px)';
+  const startButton = document.createElement('button');
+  startButton.textContent = 'Click to start';
+  startButton.style.cssText = 'padding:18px 36px;border:0;border-radius:12px;background:#2872e3;color:white;font:700 28px system-ui;cursor:pointer';
+  const entryHelp = document.createElement('p');
+  entryHelp.textContent = 'Mouse to look · WASD to move · Q up / E down';
+  entryHelp.style.cssText = 'margin:18px 0 0;color:#d9e4f5';
+  entryCard.append(startButton, entryHelp); entry.append(entryCard); document.body.append(entry);
+  entry.addEventListener('keydown', event => event.stopPropagation());
+  const suspendedElements = [];
+  startButton.onclick = event => {
+    event?.stopPropagation?.();
+    if (started) return;
+    started = true; entry.hidden = true; entry.style.display = 'none';
+    for (const [element, previous] of suspendedElements) element.inert = previous;
+    send('StartSceneInteraction', '');
+    requestSceneControl(); enableSound(); showNext();
+  };
   window.toolkitAudio = {
+    isWaitingToStart: () => !started,
+    ready() {
+      if (started || !entry.hidden) return;
+      for (const element of document.body.children) {
+        if (element === entry) continue;
+        suspendedElements.push([element, element.inert]); element.inert = true;
+      }
+      send('SetSoundChoiceVisible', '1');
+      entry.hidden = false; entry.style.display = 'flex'; startButton.focus();
+    },
     chooseUpload(upload) { uploads.push(upload); showNext(); },
     update(snapshot) {
       if (pendingRemovals.has(snapshot.objectId)) return;

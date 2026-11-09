@@ -271,7 +271,7 @@
   <canvas id="unity-canvas" tabindex="-1"></canvas>
   <aside id="save-panel" aria-label="Scene saving">
     <button type="button" id="save-scene">Save Scene · Ctrl+S</button>
-    <p id="quit-hint">Press Q to Quit</p>
+    <p id="quit-hint"><a href="/" style="color:inherit">Quit Scene [X]</a></p>
   </aside>
   <div id="rotation-controls" hidden>
     <button type="button" id="rotation-face">Face Camera</button>
@@ -298,7 +298,7 @@
       </div>
     </div>
   </div>
-  <div id="controls" hidden>Click to begin · WASD to move · Mouse to look</div>
+  <div id="controls" hidden>Click to begin · WASD to move · Q up / E down · Mouse to look</div>
   <div id="unity-warning"></div>
 
   <script src="/scene-audio.js"></script>
@@ -318,6 +318,7 @@
     const saveSceneButton = document.querySelector("#save-scene");
     const rotationControls = document.querySelector("#rotation-controls");
     let unityInstance = null;
+    let sceneHasLoaded = false;
     window.toolkitAudioSend = (method, message) => unityInstance?.SendMessage("ToolkitWebEditor", method, message);
     let activeSessionId = null;
     let mediaSessionUrl = null;
@@ -472,20 +473,11 @@
     window.toolkitEditorSavePayload = async payloadJson => {
       try {
         const payload = JSON.parse(payloadJson);
-        const images = [];
-
-        for (const image of payload.images || []) {
-          const response = await fetch(image.sourceUrl, { cache: "no-store" });
-          if (!response.ok) {
-            throw new Error(`Could not read ${image.fileName} (${response.status}).`);
-          }
-
-          const blob = await response.blob();
-          images.push({
-            fileName: image.fileName,
-            base64Data: await blobToBase64(blob)
-          });
-        }
+        const imageSources = window.toolkitEditorImageSources ||= new Map();
+        const images = (payload.images || []).map(image => ({
+          fileName: image.fileName,
+          sourceUrl: imageSources.get(image.sourceUrl) || image.sourceUrl
+        }));
 
         const response = await fetch(
           `/api/scenes/${encodeURIComponent(payload.sceneId)}/json`,
@@ -500,6 +492,11 @@
           throw new Error(result.error || `Save failed (${response.status}).`);
         }
 
+        // Follow committed filenames after replacement, including older scene bundles.
+        for (const image of payload.images || []) {
+          imageSources.set(image.sourceUrl,
+            `/scenes/${encodeURIComponent(payload.sceneId)}/images/${encodeURIComponent(image.fileName)}`);
+        }
         if (sceneSaveErrorNotice) { sceneSaveErrorNotice.remove(); sceneSaveErrorNotice = null; }
         unityInstance.SendMessage("ToolkitWebEditor", "SceneAudioSaved", payload.sceneJson);
         const isFirstSave = !savedSceneCode;
@@ -566,13 +563,6 @@
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
         requestSceneSave();
-        return;
-      }
-
-      if (!event.ctrlKey && !event.metaKey && !event.altKey &&
-          event.key.toLowerCase() === "q" && !event.repeat) {
-        event.preventDefault();
-        window.location.href = "/";
         return;
       }
 
@@ -643,7 +633,7 @@
     }
 
     function importSessionUpload(sessionId, filename) {
-      if (sessionId !== activeSessionId || !filename || !unityInstance) {
+      if (sessionId !== activeSessionId || !filename || !unityInstance || window.toolkitAudio?.isWaitingToStart()) {
         return false;
       }
 
@@ -693,9 +683,9 @@
       if (failedImageCount > 0) {
         showBanner(`${failedImageCount} image${failedImageCount === 1 ? "" : "s"} could not be loaded.`, "warning");
       }
-      controls.hidden = false;
-      setTimeout(() => controls.hidden = true, 7000);
-      canvas.focus();
+      controls.hidden = true;
+      sceneHasLoaded = true;
+      if (unityInstance) window.toolkitAudio?.ready();
     };
 
     window.toolkitViewerShowError = (message, details) => {
@@ -743,11 +733,12 @@
         loadingProgress.style.width = (progress * 100) + "%";
       }).then(instance => {
         unityInstance = instance;
+        if (sceneHasLoaded) window.toolkitAudio?.ready();
         if (!overlay.classList.contains("is-error")) {
           status.textContent = "Loading scene…";
           loadingProgress.style.width = "100%";
         }
-        canvas.focus();
+        if (!window.toolkitAudio?.isWaitingToStart()) canvas.focus();
       }).catch(message => {
         window.toolkitViewerShowError("The viewer could not start.", String(message));
       });

@@ -52,6 +52,11 @@ function browser(canvas, options = {}) {
     document: { body, createElement: element, getElementById: id => id === 'unity-canvas' ? canvas : undefined },
     window: { AudioContext, addEventListener(type, handler) { handlers[type] = handler; }, toolkitAudioSend(...args) { sent.push(args); } } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../public/scene-audio.js'),'utf8'), ctx);
+  if (!options.waitForStart) {
+    ctx.window.toolkitAudio.ready();
+    elements.find(item => item.id === 'scene-start').children[0].children[0].onclick();
+    sent.length = 0;
+  }
   return { ...ctx, sent, handlers, audios, elements, gains,
     toggle: elements.find(item => item.id === 'scene-sound-toggle'),
     dialog: elements.find(item => item.id === 'sound-choice'),
@@ -104,6 +109,7 @@ test('only scene clicks place sounds and capture the pointer', () => {
   let locked = 0; const events = {};
   const canvas = { focus() {}, addEventListener(type, handler) { events[type] = handler; }, requestPointerLock() { locked++; return Promise.resolve(); } };
   const b = browser(canvas);
+  locked = 0; // Scene entry already requested capture.
   b.handlers.click({ target: {} }); canvas.requestPointerLock(); assert.equal(locked, 0);
   b.handlers.click({ target: canvas }); canvas.requestPointerLock(); assert.equal(locked, 1);
   events.click(); assert.equal(b.sent.at(-1)[0], 'HandleSceneAudioClick');
@@ -175,7 +181,7 @@ test('M globally toggles playback while preserving individual saved mute setting
   const b = browser(); const muted = backgroundSnapshot('one', 0.6); muted.audio.muted = true;
   b.window.toolkitAudio.update(muted); b.window.toolkitAudio.update(backgroundSnapshot('two', 0.4));
   b.handlers.keydown(shortcut('m')); await new Promise(setImmediate);
-  assert.equal(b.toggle.textContent, 'Mute sound · M'); assert.equal(b.gains[0].gain.value, 0); assert.equal(b.gains[1].gain.value, 0.4);
+  assert.equal(b.toggle.textContent, 'Mute Sounds [M]'); assert.equal(b.gains[0].gain.value, 0); assert.equal(b.gains[1].gain.value, 0.4);
   b.handlers.keydown(shortcut('M')); assert.equal(b.audios[0].paused, true); assert.equal(b.audios[1].paused, true);
   b.handlers.keydown(shortcut('m')); await new Promise(setImmediate);
   assert.equal(b.gains[0].gain.value, 0); assert.equal(b.gains[1].gain.value, 0.4);
@@ -244,4 +250,64 @@ test('both sound choices require a trimmed name of 3–40 characters', () => {
     b.dialog.children[3].children[0].onclick();
     assert.equal(JSON.parse(b.sent.find(call => call[0] === 'AddSceneAudio')[1]).audio.displayName, name);
   }
+});
+
+test('Delete and Mac Backspace remove only the selected scene object', () => {
+  const canvas = { focus() {}, addEventListener() {} }; const b = browser(canvas);
+  for (const key of ['Delete', 'Backspace']) {
+    const event = shortcut(key, canvas); b.handlers.keydown(event);
+    assert.equal(event.prevented, true); assert.equal(b.sent.at(-1)[0], 'DeleteSelectedObject');
+  }
+  const count = b.sent.length;
+  b.handlers.keydown(shortcut('Delete', { closest() { return {}; } }));
+  b.handlers.keydown(shortcut('Delete', {}));
+  b.handlers.keydown({ ...shortcut('Delete', canvas), repeat: true });
+  b.handlers.keydown({ ...shortcut('Delete', canvas), metaKey: true });
+  assert.equal(b.sent.length, count);
+  b.backgroundButton.onclick(); const menuCount = b.sent.length;
+  b.handlers.keydown(shortcut('Delete', canvas)); assert.equal(b.sent.length, menuCount);
+});
+test('Delete ignores the upload naming dialog and supports a held image rotation control', () => {
+  const canvas = { focus() {}, addEventListener() {} }; const b = browser(canvas);
+  const rotationButton = { closest(selector) { return selector === '#rotation-controls' ? {} : null; } };
+  b.handlers.keydown(shortcut('Delete', rotationButton)); assert.equal(b.sent.at(-1)[0], 'DeleteSelectedObject');
+  b.window.toolkitAudio.chooseUpload({ sourceUrl: '/uploads/one.wav', filename: 'one.wav' });
+  const count = b.sent.length; b.handlers.keydown(shortcut('Delete', canvas)); assert.equal(b.sent.length, count);
+});
+
+test('scene entry starts playback without forwarding the first click to selection', async () => {
+  const canvas = { focus() {}, addEventListener(type, handler) { this[type] = handler; } };
+  const b = browser(canvas, { waitForStart: true });
+  b.window.toolkitAudio.update(snapshot());
+  b.window.toolkitAudio.ready();
+  const entry = b.elements.find(item => item.id === 'scene-start');
+  assert.equal(entry.hidden, false);
+  canvas.click();
+  b.handlers.keydown({ key: 'b' });
+  b.handlers.keydown({ key: 'Delete', target: canvas });
+  b.window.toolkitAudio.chooseUpload({ sourceUrl: '/uploads/queued.wav' });
+  assert.equal(b.dialog.open, undefined);
+  assert.equal(b.backgroundMenu.open, undefined);
+  assert.equal(b.sent.some(call => call[0] === 'DeleteSelectedObject'), false);
+  assert.equal(b.sent.some(call => call[0] === 'HandleSceneAudioClick'), false);
+  entry.children[0].children[0].onclick();
+  await new Promise(setImmediate);
+  assert.equal(entry.hidden, true);
+  assert.equal(b.dialog.open, true);
+  b.dialog.children[3].children[2].onclick();
+  assert.equal(b.audios[0].playCalls, 1);
+  assert.equal(b.sent.some(call => call[0] === 'StartSceneInteraction'), true);
+  canvas.click();
+  assert.equal(b.sent.filter(call => call[0] === 'HandleSceneAudioClick').length, 1);
+  b.window.toolkitAudio.ready();
+  assert.equal(entry.hidden, true);
+});
+
+test('X quits the scene while naming fields keep normal typing', () => {
+  const b = browser();
+  const event = { key: 'x', preventDefault() {}, stopImmediatePropagation() {} };
+  b.handlers.keydown({ ...event, target: { closest: () => true } });
+  assert.equal(b.location.href, 'http://localhost/editor/');
+  b.handlers.keydown(event);
+  assert.equal(b.location.href, '/');
 });
