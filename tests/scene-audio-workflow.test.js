@@ -7,7 +7,7 @@ const { spawn } = require('node:child_process');
 for (const extension of ['wav', 'm4a']) test(`upload, publish, reopen, and resave ${extension} through server.js`, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'toolkit-scene-flow-'));
   const source = path.resolve(__dirname,'..');
-  for (const name of ['server.js','scene-audio.js','audio-uploads.js']) fs.copyFileSync(path.join(source,name),path.join(root,name));
+  for (const name of ['server.js','scene-audio.js','audio-uploads.js','scene-skybox.js']) fs.copyFileSync(path.join(source,name),path.join(root,name));
   const modules = require.resolve('express/package.json').replace(/\/express\/package.json$/, '');
   fs.symlinkSync(modules,path.join(root,'node_modules'));
   const launchDirectory = path.join(root, 'pm2-home');

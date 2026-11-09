@@ -484,7 +484,7 @@
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sceneJson: payload.sceneJson, images, audio: payload.audio || [] })
+            body: JSON.stringify({ sceneJson: payload.sceneJson, images, audio: payload.audio || [], skybox: payload.skybox || [] })
           }
         );
         const result = await response.json().catch(() => ({}));
@@ -499,6 +499,12 @@
         }
         if (sceneSaveErrorNotice) { sceneSaveErrorNotice.remove(); sceneSaveErrorNotice = null; }
         unityInstance.SendMessage("ToolkitWebEditor", "SceneAudioSaved", payload.sceneJson);
+        for (const skybox of payload.skybox || []) {
+          unityInstance.SendMessage("ToolkitWebEditor", "SceneSkyboxSaved", JSON.stringify({
+            sourceUrl: skybox.sourceUrl,
+            savedUrl: new URL(`/scenes/${encodeURIComponent(payload.sceneId)}/skybox/${encodeURIComponent(skybox.fileName)}`, location.origin).href
+          }));
+        }
         const isFirstSave = !savedSceneCode;
         savedSceneCode = payload.sceneId;
         saveSceneButton.textContent = `Saved as: ${savedSceneCode}`;
@@ -613,6 +619,16 @@
           throw new Error(`Upload-list request failed (${response.status}).`);
         }
 
+        const skyboxResponse = await fetch(`/api/session/${encodeURIComponent(sessionId)}/skybox`, { cache: "no-store" });
+        if (skyboxResponse.ok) {
+          const skybox = await skyboxResponse.json();
+          if (skybox && unityInstance && !window.toolkitAudio?.isWaitingToStart() && skybox.revision !== window.toolkitSkyboxRevision) {
+            unityInstance.SendMessage("ToolkitWebEditor", "SetUploadedSkybox", JSON.stringify({
+              sourceUrl: skybox.sourceUrl ? new URL(skybox.sourceUrl, location.origin).href : ""
+            }));
+            window.toolkitSkyboxRevision = skybox.revision;
+          }
+        }
         const result = await response.json();
         // The server historically returned [] before the first upload and
         // { media: [...] } after one existed, so accept both response shapes.
@@ -664,6 +680,11 @@
       showBanner("Image uploaded. Adding it to the scene…", "warning");
       return true;
     }
+
+    window.toolkitEditorSkyboxResult = error => {
+      showBanner(error || "Skybox added to the scene.", error ? "error" : "success");
+      if (error) window.toolkitSkyboxRevision = null;
+    };
 
     window.toolkitViewerSetStatus = (message, current, total) => {
       overlay.hidden = false;

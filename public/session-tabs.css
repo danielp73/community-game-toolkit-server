@@ -1,0 +1,44 @@
+.session-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 6px;
+    margin: 24px 0;
+    border: 1px solid #cbd5e1;
+    border-radius: 14px;
+    background: #e8edf4;
+}
+.session-tabs [role="tab"] {
+    min-width: 0;
+    padding: 12px 8px;
+    background: transparent;
+    color: #475569;
+    border: 2px solid transparent;
+    border-radius: 10px;
+    cursor: pointer;
+}
+.session-tabs [role="tab"]:hover { background: #dbe5f2; }
+.session-tabs [role="tab"][aria-selected="true"] {
+    background: #1d4ed8;
+    color: #fff;
+    border-color: #1e40af;
+    box-shadow: 0 2px 5px #0f172a26;
+}
+.session-tabs [role="tab"]:focus-visible {
+    outline: 3px solid #0f172a;
+    outline-offset: 2px;
+}
+.session-tab-panel[hidden] { display: none !important; }
+.session-tab-panel:focus-visible { outline: 2px solid #2563eb; outline-offset: 6px; }
+
+.skybox-step + .skybox-step {
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid #cbd5e1;
+}
+.skybox-step h2 { margin: 0 0 12px; }
+.skybox-create-link { text-decoration: none; }
+.skybox-create-link:hover { background: #1d4ed8; }
+.skybox-create-link:focus-visible { outline: 3px solid #0f172a; outline-offset: 3px; }
+.skybox-note { font-size: 0.9rem; color: #64748b; }
+#skybox-file { display: block; max-width: 100%; margin-top: 10px; }

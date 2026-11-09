@@ -10,6 +10,8 @@ const { audioExtension, saveAudio } = require("./audio-uploads");
 
 const { prepareSceneAudio, copySceneAudio } = require("./scene-audio");
 
+const { registerSkyboxRoutes, prepareSceneSkybox, copySceneSkybox } = require("./scene-skybox");
+
 const app = express();
 
 const PORT = Number(process.env.PORT) || 8000;
@@ -301,6 +303,8 @@ app.get("/api/session/:id", (req, res) => {
 });
 
 
+registerSkyboxRoutes(app, sessions, UPLOADS_DIRECTORY, TEMP_UPLOAD_DIRECTORY);
+
 //** upload action
 
 app.post(
@@ -566,8 +570,8 @@ app.post(
                 });
             }
 
-            if ((sceneData.objects || []).some(item => item?.type === "audio")) {
-                return res.status(400).json({ error: "Use the JSON scene save endpoint for audio scenes." });
+            if ((sceneData.objects || []).some(item => item?.type === "audio" || item?.type === "skybox")) {
+                return res.status(400).json({ error: "Use the JSON scene save endpoint for audio or skybox scenes." });
             }
 
             const uploadedImages = new Map();
@@ -653,7 +657,7 @@ app.post(
 // Unity's multipart encoding is rejected by the current hosted proxy even
 // though ordinary curl multipart requests pass. This JSON transport carries
 // the same bundle data without changing its stored or publicly served format.
-app.post("/api/scenes/:sceneId/json", (req, res) => {
+app.post("/api/scenes/:sceneId/json", async (req, res) => {
     const sceneId = req.params.sceneId;
     let stagingDirectory;
 
@@ -722,6 +726,7 @@ app.post("/api/scenes/:sceneId/json", (req, res) => {
             uploadedImages.set(submittedImage.fileName, imageBuffer);
         }
 
+        const skyboxFile = await prepareSceneSkybox(sceneData, req.body.skybox || [], __dirname, UPLOADS_DIRECTORY);
         const audioFiles = prepareSceneAudio(sceneData, req.body.audio || [], __dirname, UPLOADS_DIRECTORY);
 
         const sceneObjects = Array.isArray(sceneData.objects) ? sceneData.objects : [];
@@ -762,6 +767,7 @@ app.post("/api/scenes/:sceneId/json", (req, res) => {
         }
 
         copySceneAudio(audioFiles, stagingDirectory);
+        copySceneSkybox(skyboxFile, stagingDirectory);
 
         const destinationDirectory = path.join(PUBLISHED_SCENES_DIRECTORY, sceneId);
         replaceDirectory(stagingDirectory, destinationDirectory);

@@ -10,7 +10,7 @@ const sharp = require('sharp');
 test('large images save by reference, reopen, resave, and reject unsafe or missing sources without replacing the scene', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'toolkit-image-reuse-'));
   const source = path.resolve(__dirname, '..');
-  for (const file of ['server.js','scene-audio.js','audio-uploads.js']) fs.copyFileSync(path.join(source,file),path.join(root,file));
+  for (const file of ['server.js','scene-audio.js','audio-uploads.js','scene-skybox.js']) fs.copyFileSync(path.join(source,file),path.join(root,file));
   fs.symlinkSync(path.dirname(path.dirname(require.resolve('express/package.json'))), path.join(root,'node_modules'));
   const launchDirectory = path.join(root, 'pm2-home');
   fs.mkdirSync(launchDirectory);
