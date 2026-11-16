@@ -311,3 +311,43 @@ test('X quits the scene while naming fields keep normal typing', () => {
   b.handlers.keydown(event);
   assert.equal(b.location.href, '/');
 });
+
+test('P previews without editing clicks or deletes and restores editing on return', () => {
+  const events = {};
+  const canvas = { focus() {}, addEventListener(type, callback) { events[type] = callback; } };
+  const b = browser(canvas);
+  const button = b.elements.find(item => item.id === 'play-scene-button');
+  const key = key => b.handlers.keydown({key,target:canvas,preventDefault(){},stopImmediatePropagation(){}});
+  assert.equal(button.textContent, 'Play Scene [P]');
+  key('p');
+  assert.equal(b.window.toolkitAudio.isPlaying(), true);
+  assert.equal(button.textContent, 'Go Back To Scene Editing [P]');
+  assert.deepEqual(b.sent.at(-1), ['SetPlayMode','1']);
+  const count = b.sent.length;
+  events.click(); key('Delete');
+  assert.equal(b.sent.length, count);
+  b.window.toolkitAudio.chooseUpload({sourceUrl:'/uploads/queued.wav'});
+  assert.equal(b.dialog.open, undefined);
+  key('p');
+  assert.equal(b.window.toolkitAudio.isPlaying(), false);
+  assert.equal(button.textContent,'Play Scene [P]');
+  assert.equal(b.dialog.open,true);
+});
+
+test('Shift+D duplicates images without taking plain D from movement or firing in dialogs', () => {
+  const canvas = { focus() {}, addEventListener() {} }; const b = browser(canvas);
+  const plain = shortcut('d', canvas); b.handlers.keydown(plain);
+  assert.equal(plain.prevented, undefined);
+  assert.equal(b.sent.some(call => call[0] === 'DuplicateSelectedImage'), false);
+  const duplicate = { ...shortcut('D',canvas), shiftKey:true }; b.handlers.keydown(duplicate);
+  assert.equal(duplicate.prevented,true);
+  assert.equal(b.sent.at(-1)[0],'DuplicateSelectedImage');
+  const count=b.sent.length;
+  b.handlers.keydown({...shortcut('D',{closest(){return {};}}),shiftKey:true});
+  b.handlers.keydown({...shortcut('D',canvas),shiftKey:true,repeat:true});
+  assert.equal(b.sent.length,count);
+  b.handlers.keydown(shortcut('p',canvas));
+  const playingCount=b.sent.length;
+  b.handlers.keydown({...shortcut('D',canvas),shiftKey:true});
+  assert.equal(b.sent.length,playingCount);
+});

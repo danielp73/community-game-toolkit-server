@@ -188,17 +188,29 @@
     #compose-prompt {
       position: fixed;
       z-index: 2;
-      left: 50%;
-      bottom: 54px;
-      min-height: 18px;
-      padding: 7px 12px;
-      transform: translateX(-50%);
-      border-radius: 999px;
-      background: rgba(0, 0, 0, 0.72);
-      color: #fff;
-      font: 600 13px/1.3 system-ui, sans-serif;
+      left: 16px;
+      bottom: 24px;
+      display: grid;
+      gap: 7px;
+      box-sizing: border-box;
+      width: max-content;
+      max-width: min(480px, calc(100vw - 32px));
+      padding: 14px 18px;
+      border: 1px solid #8497b8;
+      border-radius: 12px;
+      background: rgba(35, 43, 70, 0.96);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
+      color: #f4f6fc;
+      font: 400 13px/1.45 system-ui, sans-serif;
       pointer-events: none;
     }
+
+    #compose-prompt[hidden] { display: none; }
+    .control-tip { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 14px; align-items: center; }
+    .control-tip-keys { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+    .control-tip-key { display: inline-block; min-width: 15px; padding: 2px 7px; border: 1px solid #ffe2a0; border-radius: 5px; background: #f0c56b; color: #252a40; box-shadow: 0 2px 0 #9f7d40; font: 700 12px/1.5 system-ui, sans-serif; text-align: center; }
+    .control-tip-separator { color: #c4cee2; font-size: 12px; }
+    .control-tip-description { overflow-wrap: anywhere; }
 
     #save-panel {
       position: fixed;
@@ -206,31 +218,54 @@
       top: 16px;
       left: 16px;
       display: grid;
-      gap: 6px;
-      padding: 9px 13px;
-      border: 1px solid rgba(255, 255, 255, 0.45);
-      border-radius: 13px;
-      background: rgba(0, 0, 0, 0.72);
-      color: #fff;
-      text-align: center;
-      backdrop-filter: blur(8px);
+      gap: 7px;
+      box-sizing: border-box;
+      min-width: 270px;
+      max-width: min(360px, calc(100vw - 32px));
+      padding: 14px 18px;
+      border: 1px solid #8497b8;
+      border-radius: 12px;
+      background: rgba(35, 43, 70, 0.96);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
+      color: #f4f6fc;
+      font: 400 13px/1.45 system-ui, sans-serif;
     }
 
-    #save-scene {
-      padding: 9px 13px;
+    #save-scene, #play-scene-label {
+      margin: 0 0 4px !important;
+      padding: 0 0 12px !important;
       border: 0;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.14);
-      color: #fff;
-      font: 600 13px/1.2 system-ui, sans-serif;
+      border-bottom: 1px solid #8497b8;
+      border-radius: 0;
+      background: none;
+      color: inherit;
+      font: 600 14px/1.45 system-ui, sans-serif !important;
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+    #save-scene { cursor: pointer; }
+    #save-panel > button:not(#save-scene), #quit-hint a {
+      display: grid !important;
+      grid-template-columns: 32px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      box-sizing: border-box;
+      width: 100%;
+      margin: 0 !important;
+      padding: 5px 6px !important;
+      border: 0 !important;
+      border-radius: 6px !important;
+      background: transparent !important;
+      color: inherit !important;
+      font: 400 13px/1.45 system-ui, sans-serif !important;
+      text-align: left;
+      text-decoration: none;
       cursor: pointer;
     }
-
-    #quit-hint {
-      margin: 0;
-      color: rgba(255, 255, 255, 0.72);
-      font: 12px/1.2 system-ui, sans-serif;
-    }
+    #save-panel > button:not(#save-scene):hover, #quit-hint a:hover { background: rgba(255,255,255,0.08) !important; }
+    #save-panel button:focus-visible, #quit-hint a:focus-visible { outline: 2px solid #f0c56b; outline-offset: 2px; }
+    #save-panel .control-tip-key { justify-self: center; }
+    #quit-hint { margin: 0; }
 
     #rotation-controls {
       position: fixed;
@@ -270,8 +305,8 @@
 <body>
   <canvas id="unity-canvas" tabindex="-1"></canvas>
   <aside id="save-panel" aria-label="Scene saving">
-    <button type="button" id="save-scene">Save Scene · Ctrl+S</button>
-    <p id="quit-hint"><a href="/" style="color:inherit">Quit Scene [X]</a></p>
+    <button type="button" id="save-scene" title="Save scene (Ctrl+S)">Save Scene · Ctrl+S</button>
+    <p id="quit-hint"><a href="/" aria-label="Quit Scene [X]"><kbd class="control-tip-key">X</kbd><span>Quit Scene</span></a></p>
   </aside>
   <div id="rotation-controls" hidden>
     <button type="button" id="rotation-face">Face Camera</button>
@@ -279,7 +314,7 @@
     <button type="button" id="rotation-done" class="rotation-done">Done</button>
   </div>
   <div id="reticle" aria-hidden="true"></div>
-  <div id="compose-prompt" hidden></div>
+  <div id="compose-prompt" role="group" aria-label="Object controls" hidden></div>
   <aside id="add-media" aria-label="Add media">
     <h2>Add Media With Phone</h2>
     <img id="media-qr" alt="Scan to add media" hidden>
@@ -333,7 +368,7 @@
     const openedSceneCode = new URLSearchParams(window.location.search).get("scene")?.trim();
     if (openedSceneCode && /^[A-Za-z0-9_-]{1,64}$/.test(openedSceneCode)) {
       savedSceneCode = openedSceneCode;
-      saveSceneButton.textContent = `Saved as: ${savedSceneCode}`;
+      saveSceneButton.textContent = savedSceneCode;
     }
 
     document.querySelector("#retry").onclick = () => location.reload();
@@ -344,8 +379,31 @@
     };
 
     window.toolkitEditorSetComposePrompt = message => {
-      composePrompt.textContent = message;
+      composePrompt.replaceChildren();
       composePrompt.hidden = !message;
+      if (!message) return;
+      // Split controls, preserving middle dots that are part of a sound's name.
+      const tips = message.split(/\s+·\s+(?=(?:Click|Shift\+D|Delete|Esc|G|V|R|\[[^\]]+\])\s+(?:—|to\b))/);
+      for (const tip of tips) {
+        const row = document.createElement("div"); row.className = "control-tip";
+        const match = tip.match(/^(.+?)\s+—\s+(.+)$/) || tip.match(/^(\[[^\]]+\])\s+to\s+(.+)$/);
+        const keys = document.createElement("span"); keys.className = "control-tip-keys";
+        if (match) {
+          const brackets = /^\[\s*[&/]\s*\]$/.test(match[1]);
+          const labels = brackets ? ["[", "]"] : match[1].split("+");
+          labels.forEach((label, index) => {
+            if (index) {
+              const separator = document.createElement("span"); separator.className = "control-tip-separator";
+              separator.textContent = brackets ? "/" : "+"; keys.append(separator);
+            }
+            const key = document.createElement(label === "Click" ? "span" : "kbd");
+            key.className = "control-tip-key"; key.textContent = label; keys.append(key);
+          });
+        }
+        const description = document.createElement("span"); description.className = "control-tip-description";
+        description.textContent = match ? match[2] : tip;
+        row.append(keys, description); composePrompt.append(row);
+      }
     };
 
     window.toolkitEditorSetRotationMode = active => {
@@ -507,7 +565,7 @@
         }
         const isFirstSave = !savedSceneCode;
         savedSceneCode = payload.sceneId;
-        saveSceneButton.textContent = `Saved as: ${savedSceneCode}`;
+        saveSceneButton.textContent = savedSceneCode;
         if (isFirstSave) {
           showBanner(`Scene saved with code: ${payload.sceneId}`, "success");
         }
@@ -522,7 +580,7 @@
         sceneSaveInProgress = false;
         saveSceneButton.disabled = false;
         if (savedSceneCode && !saveSceneButton.textContent.startsWith("Save failed")) {
-          saveSceneButton.textContent = `Saved as: ${savedSceneCode}`;
+          saveSceneButton.textContent = savedSceneCode;
         }
         canvas.focus();
 
@@ -649,7 +707,7 @@
     }
 
     function importSessionUpload(sessionId, filename) {
-      if (sessionId !== activeSessionId || !filename || !unityInstance || window.toolkitAudio?.isWaitingToStart()) {
+      if (sessionId !== activeSessionId || !filename || !unityInstance || window.toolkitAudio?.isWaitingToStart() || window.toolkitAudio?.isPlaying()) {
         return false;
       }
 

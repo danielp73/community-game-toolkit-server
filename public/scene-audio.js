@@ -14,7 +14,7 @@
     };
     requestSceneControl = () => { sceneGesture = true; canvas.focus(); canvas.requestPointerLock(); };
   }
-  let started = false;
+  let started = false, playing = false;
   const editing = location.pathname.startsWith('/editor');
   const sounds = new Map(), uploads = [];
   let context, enabled = false, placementPending = false, placementId = null;
@@ -26,6 +26,16 @@
   toggle.title = 'Mute or unmute all sound (M)';
   toggle.style.cssText = 'margin-top:8px;padding:8px 14px;border:1px solid #63738c;border-radius:20px;background:#24344f;color:#fff;font:600 13px system-ui;cursor:pointer';
   const toolbar = document.getElementById?.('save-panel');
+  function setToolbarAction(button, label, shortcut) {
+    const accessibleLabel = `${label} [${shortcut}]`;
+    button.textContent = accessibleLabel;
+    if (!editing || !toolbar || !button.replaceChildren) return;
+    const key = document.createElement('kbd'); key.className = 'control-tip-key'; key.textContent = shortcut;
+    const description = document.createElement('span'); description.textContent = label;
+    button.setAttribute('aria-label', accessibleLabel);
+    button.replaceChildren(key, description);
+  }
+  setToolbarAction(toggle, 'Unmute Sounds', 'M');
   if (toolbar) toolbar.append(toggle);
   else {
     toggle.style.cssText += ';position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:30';
@@ -92,13 +102,13 @@
     for (const item of sounds.values()) item.element.pause();
   };
   function syncGlobalSoundButtons() {
-    toggle.textContent = enabled ? 'Mute Sounds [M]' : 'Unmute Sounds [M]';
+    setToolbarAction(toggle, enabled ? 'Mute Sounds' : 'Unmute Sounds', 'M');
     if (menuGlobalToggle) menuGlobalToggle.textContent = enabled ? 'Mute all · M' : 'Enable sound · M';
   }
   // Scene entry is a browser-approved gesture for autoplay, including a saved
   // background loop. The explicit toggle remains available as a fallback.
   canvas?.addEventListener('pointerdown', () => { if (started && !context) enableSound(); });
-  if (editing) canvas?.addEventListener('click', () => { if (started) send('HandleSceneAudioClick', ''); });
+  if (editing) canvas?.addEventListener('click', () => { if (started && !playing) send('HandleSceneAudioClick', ''); });
 
   const dialog = document.createElement('dialog');
   dialog.id = 'sound-choice'; dialog.setAttribute('aria-labelledby', 'sound-choice-title');
@@ -142,7 +152,7 @@
     dialog.close(); currentUpload = null; send('SetSoundChoiceVisible', '0');
   }
   function showNext() {
-    if (!started || !editing || currentUpload || backgroundMenu?.open || placementPending || !uploads.length) return;
+    if (playing || !started || !editing || currentUpload || backgroundMenu?.open || placementPending || !uploads.length) return;
     currentUpload = uploads.shift(); soundName.value = ''; updateNameValidity();
     document.exitPointerLock?.(); send('SetSoundChoiceVisible', '1');
     dialog.showModal(); soundName.focus?.();
@@ -222,7 +232,7 @@
     syncGlobalSoundButtons();
   }
   function openBackgrounds() {
-    if (!started || !editing || currentUpload || backgroundMenu.open) return;
+    if (playing || !started || !editing || currentUpload || backgroundMenu.open) return;
     document.exitPointerLock?.(); send('SetSoundChoiceVisible', '1');
     backgroundMenu.showModal(); renderBackgrounds();
   }
@@ -234,7 +244,7 @@
   }
   if (editing) {
     const button = document.createElement('button'); button.id = 'background-sounds-button';
-    button.textContent = 'Edit Background Sounds [B]'; button.title = 'Manage background sounds (B)';
+    setToolbarAction(button, 'Edit Background Sounds', 'B'); button.title = 'Manage background sounds (B)';
     button.style.cssText = toggle.style.cssText;
     button.onclick = openBackgrounds;
     (toolbar || document.body).append(button);
@@ -258,18 +268,63 @@
     backgroundMenu.addEventListener('cancel', event => { event.preventDefault(); closeBackgrounds(); });
     syncGlobalSoundButtons();
   }
+  let playButton;
+  if (editing) {
+    playButton = document.createElement('button');
+    playButton.id = 'play-scene-button'; playButton.style.cssText = toggle.style.cssText;
+    const sceneLabel = document.createElement('div'); sceneLabel.id = 'play-scene-label';
+    sceneLabel.style.cssText = 'padding:9px 13px;font:600 13px system-ui;color:white';
+    function syncSceneLabel() {
+      const text = document.getElementById?.('save-scene')?.textContent || '';
+      sceneLabel.textContent = /^(Saved as:|Save failed:)/.test(text)
+        ? text.replace(/^(Saved as:|Save failed:)\s*/, '')
+        : (!text || /^(Save Scene|Saving|Save failed)/.test(text) ? 'Untitled Scene' : text);
+    }
+    const playStyles = document.createElement('style');
+    playStyles.textContent = '#play-scene-label{display:none}body.toolkit-playing #play-scene-label{display:block}body.toolkit-playing #save-panel > :not(#play-scene-button):not(#play-scene-label),body.toolkit-playing #add-media{display:none!important}';
+    document.body.append(playStyles);
+    if (window.MutationObserver && toolbar) {
+      new window.MutationObserver(syncSceneLabel).observe(document.getElementById('save-scene'), {childList:true,subtree:true,characterData:true});
+    }
+    function syncPlayButton() {
+      document.body.classList?.toggle('toolkit-playing', playing);
+      syncSceneLabel();
+      setToolbarAction(playButton, playing ? 'Go Back To Scene Editing' : 'Play Scene', 'P');
+      playButton.setAttribute('aria-pressed', String(playing));
+    }
+    playButton.onclick = () => {
+      if (!started || currentUpload || backgroundMenu?.open) return;
+      playing = !playing; syncPlayButton();
+      send('SetPlayMode', playing ? '1' : '0');
+      requestSceneControl();
+      if (!playing) showNext();
+    };
+    syncPlayButton(); (toolbar || document.body).append(sceneLabel, playButton);
+  }
   window.addEventListener('keydown', event => {
     if (!started) return;
-    if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+    if (event.ctrlKey || event.metaKey || event.altKey || event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
     const key = event.key?.toLowerCase();
-    if (key === 'm') {
+    if (event.repeat && !(editing && event.shiftKey && key === 'd')) return;
+    if (playing && key === 'enter') {
+      event.preventDefault(); event.stopImmediatePropagation(); return;
+    }
+    if (editing && key === 'p') {
+      event.preventDefault(); event.stopImmediatePropagation(); playButton.onclick();
+    } else if (key === 'm') {
       event.preventDefault(); event.stopImmediatePropagation(); toggle.onclick();
     } else if (editing && key === 'x') {
       if (currentUpload) return;
       event.preventDefault(); event.stopImmediatePropagation();
       location.href = '/';
+    } else if (editing && event.shiftKey && key === 'd') {
+      if (playing || currentUpload || backgroundMenu?.open) return;
+      const sceneFocused = Boolean(canvas && (event.target === canvas || document.pointerLockElement === canvas)) || event.target?.closest?.('#rotation-controls');
+      if (!sceneFocused) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (!event.repeat) send('DuplicateSelectedImage', '');
     } else if (editing && (key === 'delete' || key === 'backspace')) {
-      if (currentUpload || backgroundMenu?.open) return;
+      if (playing || currentUpload || backgroundMenu?.open) return;
       const sceneFocused = Boolean(canvas && (event.target === canvas || document.pointerLockElement === canvas)) || event.target?.closest?.('#rotation-controls');
       if (!sceneFocused) return;
       event.preventDefault(); event.stopImmediatePropagation();
@@ -302,6 +357,7 @@
     requestSceneControl(); enableSound(); showNext();
   };
   window.toolkitAudio = {
+    isPlaying: () => playing,
     isWaitingToStart: () => !started,
     ready() {
       if (started || !entry.hidden) return;
