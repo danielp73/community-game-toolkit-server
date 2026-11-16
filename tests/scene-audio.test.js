@@ -49,7 +49,7 @@ function browser(canvas, options = {}) {
   const body = element();
   const ctx = { location: { pathname: '/editor/', href: 'http://localhost/editor/' }, Audio, URL,
     fetch: async () => { if (options.offline) throw new Error('offline'); return { status: options.status || 200, ok: !options.status || options.status === 200 }; },
-    document: { body, createElement: element, getElementById: id => id === 'unity-canvas' ? canvas : undefined },
+    document: { body, createElement: element, addEventListener(type, handler) { handlers['document:' + type] = handler; }, getElementById: id => id === 'unity-canvas' ? canvas : undefined },
     window: { AudioContext, addEventListener(type, handler) { handlers[type] = handler; }, toolkitAudioSend(...args) { sent.push(args); } } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../public/scene-audio.js'),'utf8'), ctx);
   if (!options.waitForStart) {
@@ -350,4 +350,65 @@ test('Shift+D duplicates images without taking plain D from movement or firing i
   const playingCount=b.sent.length;
   b.handlers.keydown({...shortcut('D',canvas),shiftKey:true});
   assert.equal(b.sent.length,playingCount);
+});
+
+test('returning from upload tab offers a safe scene resume gesture', () => {
+  let locks = 0;
+  const canvas = { focus() {}, addEventListener() {}, requestPointerLock() { locks++; } };
+  const b = browser(canvas);
+  locks = 0;
+  const entry = b.elements.find(item => item.id === 'scene-start');
+  const button = entry.children[0].children[0];
+  b.handlers.focus();
+  assert.equal(entry.hidden, false);
+  assert.equal(button.textContent, 'Click to resume scene');
+  assert.equal(locks, 0, 'focus alone must not request pointer lock');
+  assert.deepEqual(b.sent.at(-1), ['SetSoundChoiceVisible', '1']);
+  b.window.toolkitAudio.chooseUpload({sourceUrl: '/uploads/test/a.wav'});
+  assert.ok(!b.dialog.open, 'queued sound choice waits for resume');
+  button.onclick({stopPropagation() {}});
+  assert.equal(entry.hidden, true);
+  assert.equal(locks, 1);
+  assert.ok(b.sent.some(([method]) => method === 'StartSceneInteraction'));
+  assert.ok(!b.sent.some(([method]) => method === 'HandleSceneAudioClick'));
+  assert.equal(b.dialog.open, true);
+  b.handlers.focus();
+  assert.equal(entry.hidden, true, 'resume does not cover the naming dialog');
+});
+
+test('returning while the canvas already has mouse capture needs no resume prompt', () => {
+  const canvas = { focus() {}, addEventListener() {} };
+  const b = browser(canvas);
+  b.document.pointerLockElement = canvas;
+  b.handlers.focus();
+  assert.equal(b.elements.find(item => item.id === 'scene-start').hidden, true);
+});
+
+
+test('resume prompt releases delayed mouse capture and blocks Unity recapture until resumed', () => {
+  let locks = 0, exits = 0;
+  const canvas = {focus() {}, addEventListener() {}, requestPointerLock() { locks++; }};
+  const b = browser(canvas);
+  b.document.exitPointerLock = () => { exits++; b.document.pointerLockElement = null; };
+  const entry = b.elements.find(item => item.id === 'scene-start');
+  const button = entry.children[0].children[0];
+  b.handlers.focus();
+  assert.equal(entry.hidden, false);
+  const before = locks;
+  canvas.requestPointerLock();
+  assert.equal(locks, before, 'Unity cannot recapture behind the prompt');
+  b.document.pointerLockElement = canvas;
+  b.handlers['document:pointerlockchange']();
+  assert.equal(exits, 1, 'a late native lock is immediately released');
+  assert.equal(b.document.pointerLockElement, null);
+  assert.equal(entry.style.cursor, 'default');
+  b.document.pointerLockElement = canvas;
+  b.handlers.focus();
+  assert.equal(exits, 2, 'an already visible prompt releases capture on focus too');
+  button.onclick({stopPropagation() {}});
+  assert.equal(entry.hidden, true);
+  assert.equal(locks, before + 1, 'the resume gesture can capture normally');
+  b.document.pointerLockElement = canvas;
+  b.handlers['document:pointerlockchange']();
+  assert.equal(exits, 2, 'normal resumed capture is preserved');
 });

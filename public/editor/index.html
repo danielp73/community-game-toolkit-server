@@ -408,6 +408,7 @@
 
     window.toolkitEditorSetRotationMode = active => {
       rotationControls.hidden = !active;
+      document.querySelector("#rotation-face").hidden = active === 2;
       document.body.classList.toggle("rotation-mode", active);
       if (active) {
         document.exitPointerLock?.();
@@ -529,6 +530,7 @@
     saveSceneButton.onclick = requestSceneSave;
 
     window.toolkitEditorSavePayload = async payloadJson => {
+      let saveSucceeded = false;
       try {
         const payload = JSON.parse(payloadJson);
         const imageSources = window.toolkitEditorImageSources ||= new Map();
@@ -537,12 +539,15 @@
           sourceUrl: imageSources.get(image.sourceUrl) || image.sourceUrl
         }));
 
+        const requestBody = JSON.stringify({ sceneJson: payload.sceneJson, images, audio: payload.audio || [], skybox: payload.skybox || [] });
         const response = await fetch(
           `/api/scenes/${encodeURIComponent(payload.sceneId)}/json`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sceneJson: payload.sceneJson, images, audio: payload.audio || [], skybox: payload.skybox || [] })
+            body: requestBody,
+            // Keep small reference-only saves alive when the tab closes.
+            keepalive: requestBody.length * 3 < 60000
           }
         );
         const result = await response.json().catch(() => ({}));
@@ -563,6 +568,7 @@
             savedUrl: new URL(`/scenes/${encodeURIComponent(payload.sceneId)}/skybox/${encodeURIComponent(skybox.fileName)}`, location.origin).href
           }));
         }
+        saveSucceeded = true;
         const isFirstSave = !savedSceneCode;
         savedSceneCode = payload.sceneId;
         saveSceneButton.textContent = savedSceneCode;
@@ -578,6 +584,8 @@
         console.error(error);
       } finally {
         sceneSaveInProgress = false;
+        window.toolkitEditorSaveFinished?.(saveSucceeded);
+        window.toolkitEditorSaveFinished = null;
         saveSceneButton.disabled = false;
         if (savedSceneCode && !saveSceneButton.textContent.startsWith("Save failed")) {
           saveSceneButton.textContent = savedSceneCode;
@@ -613,6 +621,38 @@
         beginSceneSave(savedSceneCode);
       }, 1500);
     }
+
+    let quittingScene = false;
+    window.toolkitEditorQuit = async () => {
+      if (quittingScene) return;
+      if (!savedSceneCode || !unityInstance) { location.href = '/'; return; }
+      quittingScene = true;
+      unityInstance.SendMessage('ToolkitWebEditor', 'SetSoundChoiceVisible', '1');
+      const waitForSave = () => new Promise(resolve => { window.toolkitEditorSaveFinished = resolve; });
+      try {
+        if (sceneSaveInProgress && !await waitForSave()) return;
+        clearTimeout(autosaveTimer); autosavePending = false;
+        const saved = waitForSave();
+        beginSceneSave(savedSceneCode);
+        if (await saved) location.href = '/';
+      } finally {
+        quittingScene = false;
+        // On failure stay in the editor, with its existing save-error message.
+        unityInstance.SendMessage('ToolkitWebEditor', 'StartSceneInteraction', '');
+      }
+    };
+    document.querySelector('#quit-hint a').addEventListener('click', event => {
+      event.preventDefault(); window.toolkitEditorQuit();
+    });
+    function flushPlayerSave() {
+      if (!savedSceneCode || !unityInstance || quittingScene) return;
+      clearTimeout(autosaveTimer);
+      beginSceneSave(savedSceneCode);
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) flushPlayerSave();
+    });
+    window.addEventListener('pagehide', flushPlayerSave);
 
     function blobToBase64(blob) {
       return new Promise((resolve, reject) => {

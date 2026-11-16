@@ -1,5 +1,6 @@
 (() => {
   const canvas = document.getElementById?.('unity-canvas');
+  let entryOwnsPointer = true;
   let requestSceneControl = () => canvas?.focus();
   // Deferred Unity cursor capture must consume a scene gesture, not a UI click.
   if (canvas?.requestPointerLock) {
@@ -9,7 +10,7 @@
       window.addEventListener(type, event => { sceneGesture = event.target === canvas; }, true);
     }
     canvas.requestPointerLock = (...args) => {
-      if (!sceneGesture) return;
+      if (entryOwnsPointer || !sceneGesture) return;
       try { requestLock(...args)?.catch?.(() => {}); } catch {}
     };
     requestSceneControl = () => { sceneGesture = true; canvas.focus(); canvas.requestPointerLock(); };
@@ -152,7 +153,7 @@
     dialog.close(); currentUpload = null; send('SetSoundChoiceVisible', '0');
   }
   function showNext() {
-    if (playing || !started || !editing || currentUpload || backgroundMenu?.open || placementPending || !uploads.length) return;
+    if (playing || !started || !entry.hidden || !editing || currentUpload || backgroundMenu?.open || placementPending || !uploads.length) return;
     currentUpload = uploads.shift(); soundName.value = ''; updateNameValidity();
     document.exitPointerLock?.(); send('SetSoundChoiceVisible', '1');
     dialog.showModal(); soundName.focus?.();
@@ -281,7 +282,7 @@
         : (!text || /^(Save Scene|Saving|Save failed)/.test(text) ? 'Untitled Scene' : text);
     }
     const playStyles = document.createElement('style');
-    playStyles.textContent = '#play-scene-label{display:none}body.toolkit-playing #play-scene-label{display:block}body.toolkit-playing #save-panel > :not(#play-scene-button):not(#play-scene-label),body.toolkit-playing #add-media{display:none!important}';
+    playStyles.textContent = '#play-scene-label{display:none}body.toolkit-playing #play-scene-label{display:block}body.toolkit-playing #save-panel > :not(#play-scene-button):not(#play-scene-label),body.toolkit-playing #add-media,body.toolkit-playing #reticle{display:none!important}';
     document.body.append(playStyles);
     if (window.MutationObserver && toolbar) {
       new window.MutationObserver(syncSceneLabel).observe(document.getElementById('save-scene'), {childList:true,subtree:true,characterData:true});
@@ -316,7 +317,8 @@
     } else if (editing && key === 'x') {
       if (currentUpload) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      location.href = '/';
+      if (window.toolkitEditorQuit) window.toolkitEditorQuit();
+      else location.href = '/';
     } else if (editing && event.shiftKey && key === 'd') {
       if (playing || currentUpload || backgroundMenu?.open) return;
       const sceneFocused = Boolean(canvas && (event.target === canvas || document.pointerLockElement === canvas)) || event.target?.closest?.('#rotation-controls');
@@ -350,12 +352,37 @@
   const suspendedElements = [];
   startButton.onclick = event => {
     event?.stopPropagation?.();
-    if (started) return;
+    entryOwnsPointer = false;
     started = true; entry.hidden = true; entry.style.display = 'none';
     for (const [element, previous] of suspendedElements) element.inert = previous;
     send('StartSceneInteraction', '');
     requestSceneControl(); enableSound(); showNext();
   };
+  function releaseEntryPointer() {
+    entryOwnsPointer = true;
+    entry.style.cursor = 'default';
+    if (document.pointerLockElement) document.exitPointerLock?.();
+  }
+  // Unity may finish a deferred lock request after the window regains focus.
+  // Keep the cursor free until the user explicitly resumes the scene.
+  document.addEventListener?.('pointerlockchange', () => {
+    if (entryOwnsPointer && document.pointerLockElement) document.exitPointerLock?.();
+  });
+  function offerSceneResume() {
+    if (!entry.hidden) { releaseEntryPointer(); return; }
+    if (!started || document.hidden || document.pointerLockElement === canvas ||
+        currentUpload || backgroundMenu?.open ||
+        document.getElementById?.('rotation-controls')?.hidden === false) return;
+    startButton.textContent = 'Click to resume scene';
+    entry.hidden = false; entry.style.display = 'flex';
+    releaseEntryPointer();
+    send('SetSoundChoiceVisible', '1');
+    startButton.focus();
+  }
+  window.addEventListener('focus', offerSceneResume);
+  document.addEventListener?.('visibilitychange', () => {
+    if (!document.hidden) offerSceneResume();
+  });
   window.toolkitAudio = {
     isPlaying: () => playing,
     isWaitingToStart: () => !started,
@@ -366,7 +393,7 @@
         suspendedElements.push([element, element.inert]); element.inert = true;
       }
       send('SetSoundChoiceVisible', '1');
-      entry.hidden = false; entry.style.display = 'flex'; startButton.focus();
+      entry.hidden = false; entry.style.display = 'flex'; releaseEntryPointer(); startButton.focus();
     },
     chooseUpload(upload) { uploads.push(upload); showNext(); },
     update(snapshot) {

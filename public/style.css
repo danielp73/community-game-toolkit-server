@@ -377,7 +377,7 @@ button:disabled {
    freeform corner resizing, and two-finger pinch gestures without browser zoom. */
 .crop-canvas {
     display: block;
-    width: 100%;
+    max-width: 100%;
     max-height: 60vh;
     touch-action: none;
     cursor: grab;

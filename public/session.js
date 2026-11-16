@@ -211,26 +211,26 @@ async function startCropEditor() {
 
     try {
         const bitmap = await createImageBitmap(currentFile);
-        const shellBounds = previewShell.getBoundingClientRect();
-        const width = Math.max(280, Math.round(shellBounds.width));
-        const height = Math.min(
-            Math.round(window.innerHeight * 0.58),
-            Math.max(300, Math.round(width * 0.82))
-        );
+        // Match the displayed photo, rather than fitting it into a new shape.
+        await preview.decode();
+        const previewBounds = preview.getBoundingClientRect();
+        const width = previewBounds.width;
+        const height = previewBounds.height;
         const pixelRatio = window.devicePixelRatio || 1;
 
         // State coordinates use CSS pixels, while the canvas uses device pixels
         // for a sharp crop frame on high-density phone screens.
         cropCanvas.width = Math.round(width * pixelRatio);
         cropCanvas.height = Math.round(height * pixelRatio);
+        cropCanvas.style.width = `${width}px`;
         cropCanvas.style.height = `${height}px`;
 
         const initialScale = Math.min(width / bitmap.width, height / bitmap.height);
         const frame = {
-            x: width * 0.1,
-            y: height * 0.1,
-            width: width * 0.8,
-            height: height * 0.8
+            x: 0,
+            y: 0,
+            width,
+            height
         };
 
         cropState = {
