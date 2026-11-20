@@ -194,7 +194,8 @@
       gap: 7px;
       box-sizing: border-box;
       width: max-content;
-      max-width: min(480px, calc(100vw - 32px));
+      min-width: 270px;
+      max-width: min(360px, calc(100vw - 32px));
       padding: 14px 18px;
       border: 1px solid #8497b8;
       border-radius: 12px;
@@ -206,8 +207,8 @@
     }
 
     #compose-prompt[hidden] { display: none; }
-    .control-tip { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 14px; align-items: center; }
-    .control-tip-keys { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+    .control-tip { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 12px; align-items: center; padding: 5px 6px; }
+    .control-tip-keys { display: flex; min-width: 32px; align-items: center; justify-content: center; gap: 4px; }
     .control-tip-key { display: inline-block; min-width: 15px; padding: 2px 7px; border: 1px solid #ffe2a0; border-radius: 5px; background: #f0c56b; color: #252a40; box-shadow: 0 2px 0 #9f7d40; font: 700 12px/1.5 system-ui, sans-serif; text-align: center; }
     .control-tip-separator { color: #c4cee2; font-size: 12px; }
     .control-tip-description { overflow-wrap: anywhere; }
@@ -337,6 +338,7 @@
   <div id="unity-warning"></div>
 
   <script src="/scene-audio.js"></script>
+  <script src="/skybox-settings.js"></script>
   <script>
     const canvas = document.querySelector("#unity-canvas");
     const overlay = document.querySelector("#overlay");
@@ -378,7 +380,9 @@
       canvas.focus();
     };
 
+    window.toolkitEditorHasHeldImage = false;
     window.toolkitEditorSetComposePrompt = message => {
+      window.toolkitEditorHasHeldImage = String(message || '').includes('Shift+D');
       composePrompt.replaceChildren();
       composePrompt.hidden = !message;
       if (!message) return;
@@ -447,6 +451,7 @@
         startSessionPolling(activeSessionId);
         const localSessionUrl = `/session/${encodeURIComponent(session.sessionId)}`;
         mediaSessionUrl = localSessionUrl;
+        window.toolkitSkyboxSessionUrl = localSessionUrl;
         mediaQr.src = `${localSessionUrl}/qr`;
         mediaQr.hidden = false;
         mediaStatus.textContent = "Press Enter to add media from browser";
@@ -779,9 +784,11 @@
       return true;
     }
 
+    let skyboxNotice = null;
     window.toolkitEditorSkyboxResult = error => {
-      showBanner(error || "Skybox added to the scene.", error ? "error" : "success");
-      if (error) window.toolkitSkyboxRevision = null;
+      window.toolkitSkyboxResult?.(error);
+      skyboxNotice?.remove();
+      skyboxNotice = error ? showBanner(error, "error") : null;
     };
 
     window.toolkitViewerSetStatus = (message, current, total) => {

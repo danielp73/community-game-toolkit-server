@@ -10,6 +10,9 @@
         }
         if (focus) selected.focus();
     }
+    const requested = new URLSearchParams(location.search).get('tab') || location.hash.slice(1);
+    const initial = tabs.find(tab => tab.id === requested + '-tab');
+    if (initial) selectTab(initial);
     tabs.forEach((tab, index) => {
         tab.addEventListener('click', () => selectTab(tab));
         tab.addEventListener('keydown', event => {

@@ -412,3 +412,17 @@ test('resume prompt releases delayed mouse capture and blocks Unity recapture un
   b.handlers['document:pointerlockchange']();
   assert.equal(exits, 2, 'normal resumed capture is preserved');
 });
+
+test('distant-player recovery only relocates after explicit acceptance', () => {
+  const b = browser({focus() {},addEventListener() {}});
+  b.window.toolkitAudio.offerPlayerRecovery();
+  let recovery=b.elements.find(e=>e.open && e.children.some(c=>c.textContent==='Keep current position'));
+  assert.ok(recovery);
+  assert.ok(!b.sent.some(([method])=>method==='MovePlayerNearMedia'));
+  recovery.children.find(c=>c.textContent==='Keep current position').onclick();
+  assert.ok(!b.sent.some(([method])=>method==='MovePlayerNearMedia'));
+  b.window.toolkitAudio.offerPlayerRecovery();
+  recovery=b.elements.find(e=>e.open && e.children.some(c=>c.textContent==='Move near my media'));
+  recovery.children.find(c=>c.textContent==='Move near my media').onclick();
+  assert.equal(b.sent.filter(([method])=>method==='MovePlayerNearMedia').length,1);
+});

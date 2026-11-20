@@ -1,5 +1,6 @@
 (() => {
   const canvas = document.getElementById?.('unity-canvas');
+  let recoveryVisible = false;
   let entryOwnsPointer = true;
   let requestSceneControl = () => canvas?.focus();
   // Deferred Unity cursor capture must consume a scene gesture, not a UI click.
@@ -10,7 +11,7 @@
       window.addEventListener(type, event => { sceneGesture = event.target === canvas; }, true);
     }
     canvas.requestPointerLock = (...args) => {
-      if (entryOwnsPointer || !sceneGesture) return;
+      if (entryOwnsPointer || recoveryVisible || !sceneGesture) return;
       try { requestLock(...args)?.catch?.(() => {}); } catch {}
     };
     requestSceneControl = () => { sceneGesture = true; canvas.focus(); canvas.requestPointerLock(); };
@@ -153,7 +154,7 @@
     dialog.close(); currentUpload = null; send('SetSoundChoiceVisible', '0');
   }
   function showNext() {
-    if (playing || !started || !entry.hidden || !editing || currentUpload || backgroundMenu?.open || placementPending || !uploads.length) return;
+    if (playing || !started || !entry.hidden || recoveryVisible || !editing || currentUpload || backgroundMenu?.open || placementPending || !uploads.length) return;
     currentUpload = uploads.shift(); soundName.value = ''; updateNameValidity();
     document.exitPointerLock?.(); send('SetSoundChoiceVisible', '1');
     dialog.showModal(); soundName.focus?.();
@@ -300,17 +301,34 @@
       requestSceneControl();
       if (!playing) showNext();
     };
-    syncPlayButton(); (toolbar || document.body).append(sceneLabel, playButton);
+    const recenter = document.createElement('button');
+    recenter.id = 'recenter-player-button'; recenter.style.cssText = toggle.style.cssText;
+    setToolbarAction(recenter, "I'm Lost - Recenter Me", 'C');
+    recenter.onclick = () => {
+      if (!started || playing || currentUpload || backgroundMenu?.open || recoveryVisible) return;
+      send('MovePlayerNearMedia', ''); requestSceneControl();
+    };
+    window.toolkitRecenterPlayer = () => recenter.onclick();
+    syncPlayButton(); (toolbar || document.body).append(sceneLabel, playButton, recenter);
+    if (toolbar) {
+      const heading = document.getElementById('save-scene');
+      toolbar.insertBefore(playButton, heading?.nextSibling || toolbar.firstChild);
+      toolbar.insertBefore(sceneLabel, playButton);
+      const quit = document.getElementById('quit-hint');
+      if (quit) toolbar.append(quit);
+    }
   }
   window.addEventListener('keydown', event => {
-    if (!started) return;
+    if (!started || document.getElementById?.('skybox-settings')?.open) return;
     if (event.ctrlKey || event.metaKey || event.altKey || event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
     const key = event.key?.toLowerCase();
     if (event.repeat && !(editing && event.shiftKey && key === 'd')) return;
     if (playing && key === 'enter') {
       event.preventDefault(); event.stopImmediatePropagation(); return;
     }
-    if (editing && key === 'p') {
+    if (editing && key === 'c') {
+      event.preventDefault(); event.stopImmediatePropagation(); window.toolkitRecenterPlayer?.();
+    } else if (editing && key === 'p') {
       event.preventDefault(); event.stopImmediatePropagation(); playButton.onclick();
     } else if (key === 'm') {
       event.preventDefault(); event.stopImmediatePropagation(); toggle.onclick();
@@ -320,6 +338,7 @@
       if (window.toolkitEditorQuit) window.toolkitEditorQuit();
       else location.href = '/';
     } else if (editing && event.shiftKey && key === 'd') {
+      if (window.toolkitEditorHasHeldImage === false) return;
       if (playing || currentUpload || backgroundMenu?.open) return;
       const sceneFocused = Boolean(canvas && (event.target === canvas || document.pointerLockElement === canvas)) || event.target?.closest?.('#rotation-controls');
       if (!sceneFocused) return;
@@ -345,7 +364,7 @@
   startButton.textContent = 'Click to start';
   startButton.style.cssText = 'padding:18px 36px;border:0;border-radius:12px;background:#2872e3;color:white;font:700 28px system-ui;cursor:pointer';
   const entryHelp = document.createElement('p');
-  entryHelp.textContent = 'Mouse to look · WASD to move · Q up / E down';
+  entryHelp.textContent = 'Mouse to look · WASD to move · Q up / E down · Hold Shift to move 3× faster';
   entryHelp.style.cssText = 'margin:18px 0 0;color:#d9e4f5';
   entryCard.append(startButton, entryHelp); entry.append(entryCard); document.body.append(entry);
   entry.addEventListener('keydown', event => event.stopPropagation());
@@ -366,12 +385,12 @@
   // Unity may finish a deferred lock request after the window regains focus.
   // Keep the cursor free until the user explicitly resumes the scene.
   document.addEventListener?.('pointerlockchange', () => {
-    if (entryOwnsPointer && document.pointerLockElement) document.exitPointerLock?.();
+    if ((entryOwnsPointer || recoveryVisible) && document.pointerLockElement) document.exitPointerLock?.();
   });
   function offerSceneResume() {
     if (!entry.hidden) { releaseEntryPointer(); return; }
     if (!started || document.hidden || document.pointerLockElement === canvas ||
-        currentUpload || backgroundMenu?.open ||
+        currentUpload || backgroundMenu?.open || document.querySelector?.('dialog[open]') ||
         document.getElementById?.('rotation-controls')?.hidden === false) return;
     startButton.textContent = 'Click to resume scene';
     entry.hidden = false; entry.style.display = 'flex';
@@ -384,6 +403,26 @@
     if (!document.hidden) offerSceneResume();
   });
   window.toolkitAudio = {
+    offerPlayerRecovery() {
+      if (recoveryVisible) return;
+      recoveryVisible = true;
+      const recovery = document.createElement('dialog');
+      recovery.style.cssText = dialog.style.cssText;
+      const title = document.createElement('h2'); title.textContent = 'Far away from your scene?';
+      const text = document.createElement('p'); text.textContent = 'Your saved position is far from the images and sounds in this scene. Move back near them?';
+      const move = document.createElement('button'); move.textContent = 'Move near my media';
+      const stay = document.createElement('button'); stay.textContent = 'Keep current position';
+      recovery.append(title, text, move, stay); document.body.append(recovery);
+      const close = relocate => {
+        if (relocate) send('MovePlayerNearMedia', '');
+        recovery.close(); recovery.remove(); recoveryVisible = false;
+        send('SetSoundChoiceVisible', '0'); requestSceneControl();
+      };
+      move.onclick = () => close(true); stay.onclick = () => close(false);
+      recovery.addEventListener('cancel', event => { event.preventDefault(); close(false); });
+      document.exitPointerLock?.(); send('SetSoundChoiceVisible', '1'); recovery.showModal();
+    },
+    resumeControls() { requestSceneControl(); },
     isPlaying: () => playing,
     isWaitingToStart: () => !started,
     ready() {
