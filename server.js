@@ -684,6 +684,14 @@ app.post("/api/scenes/:sceneId/json", async (req, res) => {
             });
         }
 
+        const previousSceneFile = path.join(PUBLISHED_SCENES_DIRECTORY, sceneId, "scene.json");
+        if ((sceneData.objects || []).length === 0 && fs.existsSync(previousSceneFile)) {
+            const previousScene = JSON.parse(fs.readFileSync(previousSceneFile, "utf8"));
+            if ((previousScene.objects || []).some(object => object.type === 'image' || object.type === 'audio')) return res.status(409).json({
+                error: "Save blocked to protect your scene: an empty editor cannot replace an existing scene. Reload the scene."
+            });
+        }
+
         const submittedImages = Array.isArray(req.body.images) ? req.body.images : [];
 
         if (submittedImages.length > 100) {
@@ -887,8 +895,8 @@ function isValidBase64(value) {
 // Replace an existing published version without leaving the scene directory
 // missing if moving the newly validated bundle unexpectedly fails.
 function replaceDirectory(sourceDirectory, destinationDirectory) {
-    const backupDirectory = `${destinationDirectory}.previous`;
-    fs.rmSync(backupDirectory, { recursive: true, force: true });
+    // Hold the old folder only during replacement, then discard it on success.
+    const backupDirectory = destinationDirectory + ".replacing-" + Date.now() + "-" + Math.random().toString(36).slice(2);
 
     if (fs.existsSync(destinationDirectory)) {
         fs.renameSync(destinationDirectory, backupDirectory);
@@ -896,7 +904,6 @@ function replaceDirectory(sourceDirectory, destinationDirectory) {
 
     try {
         fs.renameSync(sourceDirectory, destinationDirectory);
-        fs.rmSync(backupDirectory, { recursive: true, force: true });
     } catch (error) {
         if (fs.existsSync(backupDirectory) && !fs.existsSync(destinationDirectory)) {
             fs.renameSync(backupDirectory, destinationDirectory);
@@ -904,6 +911,7 @@ function replaceDirectory(sourceDirectory, destinationDirectory) {
 
         throw error;
     }
+    fs.rmSync(backupDirectory, { recursive: true, force: true });
 }
 
 // Convert HEIC/HEIF to PNG before resizing. This uses a dedicated decoder,

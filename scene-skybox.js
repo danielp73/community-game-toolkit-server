@@ -51,7 +51,7 @@ function registerSkyboxRoutes(app, sessions, uploads, temp) {
     });
 }
 async function prepareSceneSkybox(scene, sources, root, uploads) {
-    if (scene.skyboxColor != null && !/^#[0-9a-fA-F]{6}$/.test(scene.skyboxColor)) fail('Invalid skybox color.');
+    if (scene.skyboxColor != null && scene.skyboxColor !== '' && !/^#[0-9a-fA-F]{6}$/.test(scene.skyboxColor)) fail('Invalid skybox color.');
     const objects = (scene.objects || []).filter(item => item?.type === 'skybox');
     if (objects.length > 1 || !Array.isArray(sources) || sources.length !== objects.length) fail('A scene may contain one skybox with one matching image.');
     if (!objects.length) return null;

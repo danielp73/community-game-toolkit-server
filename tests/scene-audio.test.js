@@ -426,3 +426,25 @@ test('distant-player recovery only relocates after explicit acceptance', () => {
   recovery.children.find(c=>c.textContent==='Move near my media').onclick();
   assert.equal(b.sent.filter(([method])=>method==='MovePlayerNearMedia').length,1);
 });
+
+test('an existing missing sound does not block other scene saves, but missing new uploads are rejected', () => {
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'missing-existing-audio-'));
+  try {
+    const scene=data(); scene.sceneId='existing';
+    fs.mkdirSync(path.join(root,'public/scenes/existing'),{recursive:true});
+    fs.mkdirSync(path.join(root,'uploads'),{recursive:true});
+    const sources=[{fileName:'sound.wav',sourceUrl:'/scenes/existing/audio/sound.wav'}];
+    assert.throws(()=>prepareSceneAudio(scene,sources,root),/source is missing/);
+    fs.writeFileSync(path.join(root,'public/scenes/existing/scene.json'),JSON.stringify(scene));
+    const before=JSON.stringify(scene);
+    const files=prepareSceneAudio(scene,sources,root);
+    assert.equal(files.get('sound.wav'),null);
+    const stage=path.join(root,'stage');fs.mkdirSync(stage);
+    copySceneAudio(files,stage);
+    assert.equal(JSON.stringify(scene),before,'missing sound settings and placement are preserved');
+    assert.throws(()=>prepareSceneAudio(scene,[{fileName:'sound.wav',sourceUrl:'/uploads/session/sound.wav'}],root),/source is missing/);
+    const changed=structuredClone(scene);changed.objects[0].objectId='new-sound';
+    assert.throws(()=>prepareSceneAudio(changed,sources,root),/source is missing/);
+    assert.throws(()=>prepareSceneAudio(scene,[{fileName:'sound.wav',sourceUrl:'/scenes/another/audio/sound.wav'}],root),/source is missing/);
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});

@@ -8,7 +8,11 @@
 
     <link rel="stylesheet" href="/style.css">
     <link rel="stylesheet" href="/session-tabs.css">
-    <style>#skybox-panel [hidden] { display: none; }</style>
+    <style>
+        #skybox-panel [hidden] { display: none; }
+        #skybox-preview { display: block; margin: 16px 0; }
+        #upload-skybox { display: block; margin-top: 12px; }
+    </style>
 </head>
 
 <body>
@@ -107,7 +111,7 @@
             <h2 id="upload-skybox-heading">2. Upload file</h2>
             <label for="skybox-file">Choose your saved skybox image</label>
             <input type="file" id="skybox-file" name="skybox" accept="image/jpeg,image/png,.jpg,.jpeg,.png" aria-describedby="skybox-hint skybox-status">
-            <p id="skybox-hint" class="skybox-note">JPG or PNG · Up to 15 MB</p>
+            <p id="skybox-hint" class="skybox-note">JPG or PNG · Up to 15 MB · Other proportions are automatically cropped to 2:1</p>
             <img id="skybox-preview" alt="Selected skybox preview" hidden style="max-width:100%;max-height:220px;object-fit:contain">
             <button type="button" id="upload-skybox" disabled>Upload skybox</button>
             <button type="button" id="clear-skybox" class="secondary" hidden>Clear selection</button>

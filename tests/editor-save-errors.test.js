@@ -55,7 +55,7 @@ function quitHarness(inProgress = false) {
   const messages = [], saves = [], events = {};
   const context = { window: {addEventListener(name, fn) { events[name] = fn; }}, location: {href: '/editor/?scene=old'},
     document: {querySelector: () => ({addEventListener() {}}),addEventListener(name, fn) { events[name] = fn; }},
-    savedSceneCode: 'old', sceneSaveInProgress: inProgress, autosaveTimer: 1, autosavePending: true,
+    sceneHasLoaded: true, sceneLoadIncomplete: false, savedSceneCode: 'old', sceneSaveInProgress: inProgress, autosaveTimer: 1, autosavePending: true,
     unityInstance: {SendMessage(...args) { messages.push(args); }}, clearTimeout() {},
     beginSceneSave(code) { saves.push(code); } };
   vm.runInNewContext(html.slice(start, end), context);
@@ -87,4 +87,12 @@ test('hiding or closing the page flushes the player autosave without waiting for
   events.visibilitychange();
   events.pagehide();
   assert.deepEqual(saves, ['old', 'old']);
+});
+
+test('loading or incomplete scenes never flush a save on page exit', () => {
+  const {context:c,saves,events}=quitHarness();
+  c.sceneHasLoaded=false;c.document.hidden=true;
+  events.visibilitychange();events.pagehide();assert.equal(saves.length,0);
+  c.sceneHasLoaded=true;c.sceneLoadIncomplete=true;
+  events.visibilitychange();events.pagehide();assert.equal(saves.length,0);
 });

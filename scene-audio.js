@@ -6,6 +6,13 @@ function prepareSceneAudio(sceneData, sources, root, uploadsDirectory = path.joi
     const fail = message => { const error = new Error(message); error.status = 400; throw error; };
     const sounds = (sceneData.objects || []).filter(item => item?.type === 'audio');
     if (!Array.isArray(sources) || sources.length > 16 || sounds.length > 16) fail('A scene may contain at most 16 sounds.');
+    let previousSounds = [];
+    if (/^[A-Za-z0-9_-]{1,64}$/.test(sceneData.sceneId || '')) {
+        try {
+            const previous = JSON.parse(fs.readFileSync(path.join(root, 'public', 'scenes', sceneData.sceneId, 'scene.json'), 'utf8'));
+            previousSounds = (previous.objects || []).filter(item => item?.type === 'audio');
+        } catch {}
+    }
     const files = new Map(); let total = 0;
     for (const source of sources) {
         if (!safeAudioName.test(source?.fileName) || files.has(source.fileName)) fail('Invalid or duplicate sound filename.');
@@ -17,7 +24,17 @@ function prepareSceneAudio(sceneData, sources, root, uploadsDirectory = path.joi
         const isUpload = pathname.startsWith('/uploads/');
         const base = fs.realpathSync(isUpload ? uploadsDirectory : path.join(root, 'public'));
         const filename = path.join(base, isUpload ? pathname.slice('/uploads/'.length) : pathname.slice(1));
-        if (!fs.existsSync(filename)) fail('A sound source is missing. Upload it again.');
+        if (!fs.existsSync(filename)) {
+            // Preserve an existing broken reference without blocking unrelated saves.
+            // A new/missing upload or a reference from another scene remains invalid.
+            const assetUrl = 'audio/' + source.fileName;
+            const existingMissing = pathname === '/scenes/' + sceneData.sceneId + '/' + assetUrl &&
+                sounds.some(sound => sound.assetUrl === assetUrl && previousSounds.some(previous =>
+                    previous.objectId === sound.objectId && previous.assetUrl === assetUrl));
+            if (!existingMissing) fail('A sound source is missing. Upload it again.');
+            files.set(source.fileName, null);
+            continue;
+        }
         const real = fs.realpathSync(filename);
         if (!real.startsWith(fs.realpathSync(base) + path.sep) || real !== path.resolve(filename)) fail('Invalid sound source path.');
         const size = fs.statSync(real).size;
@@ -43,6 +60,8 @@ function prepareSceneAudio(sceneData, sources, root, uploadsDirectory = path.joi
 function copySceneAudio(files, staging) {
     if (!files.size) return;
     const folder = path.join(staging, 'audio'); fs.mkdirSync(folder, { recursive: true });
-    for (const [name, source] of files) fs.copyFileSync(source, path.join(folder, name));
+    for (const [name, source] of files) {
+        if (source !== null) fs.copyFileSync(source, path.join(folder, name));
+    }
 }
 module.exports = { prepareSceneAudio, copySceneAudio };

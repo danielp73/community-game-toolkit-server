@@ -370,6 +370,7 @@
     const rotationControls = document.querySelector("#rotation-controls");
     let unityInstance = null;
     let sceneHasLoaded = false;
+    let sceneLoadIncomplete = false;
     window.toolkitAudioSend = (method, message) => unityInstance?.SendMessage("ToolkitWebEditor", method, message);
     let activeSessionId = null;
     let mediaSessionUrl = null;
@@ -560,6 +561,7 @@
     }
 
     function beginSceneSave(sceneCode) {
+      if (!sceneHasLoaded || sceneLoadIncomplete) return;
       if (!unityInstance || sceneSaveInProgress) {
         autosavePending = true;
         return;
@@ -656,7 +658,8 @@
         return;
       }
 
-      clearTimeout(autosaveTimer);
+      // Keep a bounded save delay even while the player keeps moving.
+      if (autosaveTimer !== null) return;
       autosaveTimer = setTimeout(() => {
         autosaveTimer = null;
         if (sceneSaveInProgress) {
@@ -671,13 +674,13 @@
     let quittingScene = false;
     window.toolkitEditorQuit = async () => {
       if (quittingScene) return;
-      if (!savedSceneCode || !unityInstance) { location.href = '/'; return; }
+      if (!savedSceneCode || !unityInstance || !sceneHasLoaded || sceneLoadIncomplete) { location.href = '/'; return; }
       quittingScene = true;
       unityInstance.SendMessage('ToolkitWebEditor', 'SetSoundChoiceVisible', '1');
       const waitForSave = () => new Promise(resolve => { window.toolkitEditorSaveFinished = resolve; });
       try {
         if (sceneSaveInProgress && !await waitForSave()) return;
-        clearTimeout(autosaveTimer); autosavePending = false;
+        clearTimeout(autosaveTimer); autosaveTimer = null; autosavePending = false;
         const saved = waitForSave();
         beginSceneSave(savedSceneCode);
         if (await saved) location.href = '/';
@@ -691,8 +694,8 @@
       event.preventDefault(); window.toolkitEditorQuit();
     });
     function flushPlayerSave() {
-      if (!savedSceneCode || !unityInstance || quittingScene) return;
-      clearTimeout(autosaveTimer);
+      if (!savedSceneCode || !unityInstance || quittingScene || !sceneHasLoaded || sceneLoadIncomplete) return;
+      clearTimeout(autosaveTimer); autosaveTimer = null;
       beginSceneSave(savedSceneCode);
     }
     document.addEventListener('visibilitychange', () => {
@@ -830,6 +833,10 @@
       window.toolkitSkyboxResult?.(error);
       skyboxNotice?.remove();
       skyboxNotice = error ? showBanner(error, "error") : null;
+      if (!error && savedSceneCode) {
+        clearTimeout(autosaveTimer); autosaveTimer = null;
+        beginSceneSave(savedSceneCode);
+      }
     };
 
     window.toolkitViewerSetStatus = (message, current, total) => {
@@ -846,6 +853,7 @@
     };
 
     window.toolkitViewerShowReady = failedImageCount => {
+      sceneLoadIncomplete = sceneLoadIncomplete || failedImageCount > 0;
       overlay.hidden = true;
       if (failedImageCount > 0) {
         showBanner(`${failedImageCount} image${failedImageCount === 1 ? "" : "s"} could not be loaded.`, "warning");
