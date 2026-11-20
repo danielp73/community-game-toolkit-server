@@ -207,6 +207,16 @@
     }
 
     #compose-prompt[hidden] { display: none; }
+    .carry-guide { padding: 5px 6px 12px; border-bottom: 1px solid #8497b8; margin-bottom: 4px; }
+    .carry-guide-title { font-weight: 600; margin-bottom: 12px; }
+    .carry-guide-row { display: flex; align-items: center; gap: 14px; margin: 16px 0; }
+    .carry-keyboard { display: grid; grid-template-columns: repeat(3, 25px); gap: 4px; flex-shrink: 0; }
+    .carry-keyboard kbd { box-sizing: border-box; padding: 2px; }
+    .carry-keyboard .carry-w { grid-column: 2; }
+    .carry-keyboard .carry-a { grid-column: 1; }
+    .carry-elevation { display: flex; gap: 8px; min-width: 83px; justify-content: center; }
+    .carry-guide-hint { color: #c4cee2; margin-top: 10px; font-size: 12px; }
+
     .control-tip { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 12px; align-items: center; padding: 5px 6px; }
     .control-tip-keys { display: flex; min-width: 32px; align-items: center; justify-content: center; gap: 4px; }
     .control-tip-key { display: inline-block; min-width: 15px; padding: 2px 7px; border: 1px solid #ffe2a0; border-radius: 5px; background: #f0c56b; color: #252a40; box-shadow: 0 2px 0 #9f7d40; font: 700 12px/1.5 system-ui, sans-serif; text-align: center; }
@@ -267,6 +277,10 @@
     #save-panel button:focus-visible, #quit-hint a:focus-visible { outline: 2px solid #f0c56b; outline-offset: 2px; }
     #save-panel .control-tip-key { justify-self: center; }
     #quit-hint { margin: 0; }
+    body.holding-scene-object #save-panel,
+    body.holding-scene-object #add-media,
+    body.rotation-mode #save-panel,
+    body.rotation-mode #add-media { display: none !important; }
 
     #rotation-controls {
       position: fixed;
@@ -383,9 +397,36 @@
     window.toolkitEditorHasHeldImage = false;
     window.toolkitEditorSetComposePrompt = message => {
       window.toolkitEditorHasHeldImage = String(message || '').includes('Shift+D');
+      document.body?.classList?.toggle('holding-scene-object', /^Click\s+—\s+Place\b/.test(message || ''));
       composePrompt.replaceChildren();
       composePrompt.hidden = !message;
       if (!message) return;
+      if (/^Click\s+—\s+Place\b/.test(message)) {
+        const guide = document.createElement('div'); guide.className = 'carry-guide';
+        const title = document.createElement('div'); title.className = 'carry-guide-title'; title.textContent = 'Move to carry the object';
+        guide.append(title);
+        function key(label, extra = '') {
+          const item = document.createElement('kbd'); item.className = 'control-tip-key ' + extra; item.textContent = label; return item;
+        }
+        const around = document.createElement('div'); around.className = 'carry-guide-row';
+        const keyboard = document.createElement('div'); keyboard.className = 'carry-keyboard';
+        keyboard.append(key('W', 'carry-w'), key('A', 'carry-a'), key('S'), key('D'));
+        const aroundText = document.createElement('span'); aroundText.textContent = 'Move the object around';
+        around.append(keyboard, aroundText);
+        const elevation = document.createElement('div'); elevation.className = 'carry-guide-row';
+        const elevationKeys = document.createElement('div'); elevationKeys.className = 'carry-elevation';
+        elevationKeys.append(key('Q ↑'), key('E ↓'));
+        const elevationText = document.createElement('span'); elevationText.textContent = 'Move the object up / down';
+        elevation.append(elevationKeys, elevationText);
+        const hint = document.createElement('div'); hint.className = 'carry-guide-hint'; hint.textContent = 'Hold Shift to move faster';
+        const mouse = document.createElement('div'); mouse.className = 'carry-guide-row';
+        const mouseKeys = document.createElement('div'); mouseKeys.className = 'carry-elevation'; mouseKeys.append(key('Mouse'));
+        const mouseText = document.createElement('span');
+        mouseText.textContent = /^Click\s+—\s+Place ground\b/.test(message)
+          ? 'Look around' : 'Look around to move the object';
+        mouse.append(mouseKeys, mouseText);
+        guide.append(mouse, around, elevation, hint); composePrompt.append(guide);
+      }
       // Split controls, preserving middle dots that are part of a sound's name.
       const tips = message.split(/\s+·\s+(?=(?:Click|Shift\+D|Delete|Esc|G|V|R|\[[^\]]+\])\s+(?:—|to\b))/);
       for (const tip of tips) {
